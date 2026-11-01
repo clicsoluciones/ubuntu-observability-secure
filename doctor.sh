@@ -430,8 +430,8 @@ done
 # Esperar a que Loki responda en :3100/ready antes de evaluar/reiniciar Alloy
 if systemctl is-active --quiet "$LOKI_SERVICE" 2>/dev/null; then
   loki_ready=0
-  for _ in {1..15}; do
-    if curl -fsSL "http://127.0.0.1:3100/ready" >/dev/null 2>&1; then
+  for _ in {1..8}; do
+    if curl -fsSL --connect-timeout 1 --max-time 2 "http://127.0.0.1:3100/ready" >/dev/null 2>&1; then
       loki_ready=1
       break
     fi
@@ -447,16 +447,16 @@ fi
 # Ahora comprobar Alloy, Grafana y CrowdSec
 if [[ "$NEED_ALLOY_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   systemctl reset-failed alloy 2>/dev/null || true
-  systemctl restart alloy || true
-  sleep 2
+  systemctl restart alloy 2>/dev/null || true
+  sleep 1
 fi
 if [[ "$NEED_GRAFANA_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   systemctl reset-failed grafana-server 2>/dev/null || true
-  systemctl restart grafana-server || true
-  sleep 2
+  systemctl restart grafana-server 2>/dev/null || true
+  sleep 1
 fi
 
-for svc in alloy grafana-server crowdsec auditd; do
+for svc in alloy grafana-server crowdsec; do
   if ! systemctl list-unit-files "${svc}.service" >/dev/null 2>&1; then
     report_warn "Servicio opcional '$svc' no está instalado en este sistema"
     continue
@@ -470,7 +470,7 @@ for svc in alloy grafana-server crowdsec auditd; do
       systemctl reset-failed "$svc" 2>/dev/null || true
       systemctl enable --now "$svc" 2>/dev/null || true
       systemctl restart "$svc" 2>/dev/null || true
-      sleep 2
+      sleep 1
       if systemctl is-active --quiet "$svc" 2>/dev/null; then
         report_fixed "Servicio '$svc' recuperado y activo"
       else
@@ -479,6 +479,29 @@ for svc in alloy grafana-server crowdsec auditd; do
     fi
   fi
 done
+
+# Auditd: nunca se reinicia con systemctl restart porque Linux kernel auditd tiene RefuseManualStop=yes
+# y causa congelamiento en terminal. Se usa augenrules --load para recargar reglas sin colgar el proceso.
+if systemctl list-unit-files auditd.service >/dev/null 2>&1; then
+  if systemctl is-active --quiet auditd 2>/dev/null; then
+    report_pass "Servicio 'auditd' está activo (running)"
+    if [[ "$CHECK_ONLY" -eq 0 ]]; then
+      augenrules --load >/dev/null 2>&1 || true
+    fi
+  else
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_fail "Servicio 'auditd' no está activo"
+    else
+      service auditd start 2>/dev/null || systemctl start auditd 2>/dev/null || true
+      sleep 1
+      if systemctl is-active --quiet auditd 2>/dev/null; then
+        report_fixed "Servicio 'auditd' iniciado"
+      else
+        report_warn "Servicio 'auditd' no pudo iniciar en este kernel/container"
+      fi
+    fi
+  fi
+fi
 
 # ------------------------------------------------------------------------------
 # 4. VERIFICACIÓN DE PUERTOS EN LOOPBACK
