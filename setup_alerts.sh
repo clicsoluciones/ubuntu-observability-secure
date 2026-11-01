@@ -142,12 +142,23 @@ if systemctl is-active --quiet prometheus 2>/dev/null; then
   echo "  [OK] Prometheus recargado con 9 reglas PromQL de host y red."
 fi
 
-echo "==> [2/4] Aprovisionando las 16 reglas en Grafana Unified Alerting"
+echo "==> [2/4] Aprovisionando las 16 reglas y el Dashboard en Grafana"
 ALERTING_DIR="/etc/grafana/provisioning/alerting"
 TARGET_ALERTS="$ALERTING_DIR/observability-alerts.yml"
+DASHBOARDS_DIR="/var/lib/grafana/dashboards"
+TARGET_DASHBOARD="$DASHBOARDS_DIR/ubuntu-security-overview.json"
 
 install -d -m 0755 "$ALERTING_DIR"
 install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" "$TARGET_ALERTS"
+
+if getent passwd grafana >/dev/null 2>&1; then
+  install -d -o grafana -g grafana -m 0755 "$DASHBOARDS_DIR"
+  install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" "$TARGET_DASHBOARD"
+else
+  install -d -m 0755 "$DASHBOARDS_DIR"
+  install -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" "$TARGET_DASHBOARD"
+fi
+echo "  [OK] Dashboard visual con los 16 vectores y monitor de alertas actualizado en $TARGET_DASHBOARD"
 
 # Aplicar personalizaciones solicitadas por CLI sobre el archivo aprovisionado
 if [[ -n "$SSH_LOGIN_ALERT" ]]; then
@@ -278,9 +289,10 @@ fi
 
 echo
 echo "================================================================================"
-echo "          CATÁLOGO DE 16 ALERTAS APROVISIONADO EN GRAFANA Y PROMETHEUS          "
+echo "     CATÁLOGO DE 16 ALERTAS Y DASHBOARD APROVISIONADOS EN GRAFANA Y PROMETHEUS  "
 echo "================================================================================"
 echo "  - Archivo Grafana:     $TARGET_ALERTS"
+echo "  - Dashboard Visual:    $TARGET_DASHBOARD"
 echo "  - Archivo Prometheus:  /etc/prometheus/rules/host-alerts.yml"
 echo "  - Carpeta en Grafana:  Alerting -> Alert rules -> 'Observabilidad y Seguridad'"
 echo "  - Grupos activos:      1) salud-y-recursos-host (5 reglas PromQL)"

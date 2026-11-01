@@ -31,7 +31,7 @@
       },
       "id": 1,
       "panels": [],
-      "title": "Estado General y Recursos",
+      "title": "Estado General, Recursos y Servicios (Bloque A - PromQL)",
       "type": "row"
     },
     {
@@ -71,7 +71,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 4,
+        "w": 6,
         "x": 0,
         "y": 1
       },
@@ -105,7 +105,7 @@
           "refId": "A"
         }
       ],
-      "title": "CPU Uso %",
+      "title": "[1] CPU Uso % (Umbral >85%)",
       "type": "gauge"
     },
     {
@@ -145,8 +145,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 4,
-        "x": 4,
+        "w": 6,
+        "x": 6,
         "y": 1
       },
       "id": 3,
@@ -179,7 +179,7 @@
           "refId": "A"
         }
       ],
-      "title": "Memoria RAM Usada %",
+      "title": "[2] Memoria RAM Usada % (Umbral >90%)",
       "type": "gauge"
     },
     {
@@ -219,8 +219,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 4,
-        "x": 8,
+        "w": 6,
+        "x": 12,
         "y": 1
       },
       "id": 4,
@@ -253,7 +253,7 @@
           "refId": "A"
         }
       ],
-      "title": "Disco Raíz Usado %",
+      "title": "[3] Almacenamiento Raíz Usado % (Umbral >85%)",
       "type": "gauge"
     },
     {
@@ -266,10 +266,11 @@
           "color": {
             "mode": "thresholds"
           },
-          "decimals": 2,
+          "decimals": 1,
           "mappings": [],
           "max": 100,
           "min": 0,
+          "noValue": "0",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -293,15 +294,14 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 4,
-        "x": 12,
+        "w": 6,
+        "x": 18,
         "y": 1
       },
       "id": 5,
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "minVizHeight": 75,
+        "minVizWidth": 75,
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -310,9 +310,9 @@
           "fields": "",
           "values": false
         },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
       },
       "pluginVersion": "11.0.0",
       "targets": [
@@ -322,14 +322,14 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(node_nf_conntrack_entries / node_nf_conntrack_entries_limit) * 100",
-          "legendFormat": "Conntrack %",
+          "expr": "max(rate(node_disk_io_time_seconds_total[5m]) * 100)",
+          "legendFormat": "I/O Disco Max %",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Tabla Conntrack %",
-      "type": "stat"
+      "title": "[4] Actividad I/O de Disco % (Umbral >80%)",
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -341,40 +341,50 @@
           "color": {
             "mode": "thresholds"
           },
-          "decimals": 0,
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "CAÍDO"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "ACTIVO"
+                }
+              },
+              "type": "value"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "green",
                 "value": 1
-              },
-              {
-                "color": "red",
-                "value": 10
               }
             ]
-          },
-          "unit": "short"
+          }
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 16,
-        "y": 1
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 6
       },
       "id": 6,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -384,7 +394,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "auto",
+        "textMode": "value_and_name",
         "wideLayout": true
       },
       "pluginVersion": "11.0.0",
@@ -395,109 +405,14 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(cs_active_decisions) or vector(0)",
-          "legendFormat": "Decisiones Activas",
+          "expr": "node_systemd_unit_state{name=~\"(ssh|sshd|nginx|crowdsec|prometheus|loki|loki-server|alloy|grafana-server)\\\\.service\",state=\"active\"}",
+          "legendFormat": "{{name}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "CrowdSec Decisiones Activas",
+      "title": "[5] Estado Servicios Críticos systemd (ACTIVO / CAÍDO)",
       "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 0,
-          "mappings": [
-            {
-              "options": {
-                "match": "null",
-                "result": {
-                  "text": "0"
-                }
-              },
-              "type": "special"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 5
-              },
-              {
-                "color": "red",
-                "value": 15
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 20,
-        "y": 1
-      },
-      "id": 7,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "11.0.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"Failed password\"[15m]))",
-          "queryType": "range",
-          "refId": "A"
-        }
-      ],
-      "title": "Intentos Fallidos SSH (15m)",
-      "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 6
-      },
-      "id": 8,
-      "panels": [],
-      "title": "Rendimiento del Host y Red",
-      "type": "row"
     },
     {
       "datasource": {
@@ -558,12 +473,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
-        "x": 0,
-        "y": 7
+        "x": 12,
+        "y": 6
       },
-      "id": 9,
+      "id": 7,
       "options": {
         "legend": {
           "calcs": [
@@ -602,10 +517,866 @@
           "legendFormat": "RAM Usada %",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(rate(node_disk_io_time_seconds_total[5m]) * 100)",
+          "legendFormat": "I/O Disco Max %",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Historial CPU y Memoria (%)",
+      "title": "Historial CPU, RAM e I/O de Disco (%)",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "id": 8,
+      "panels": [],
+      "title": "Radar de Seguridad: Accesos SSH, DDoS L4/L7, Bot Scan e IPS (Bloque B - Los 11 Vectores)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 15
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 14
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"Failed password\"[5m])) or vector(0)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "[6] Fuerza Bruta SSH (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 14
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"Accepted \"[5m])) or vector(0)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "[7] Logins SSH Exitosos (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 14
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"sudo:\" |= \"authentication failure\"[5m])) or vector(0)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "[8] Fallos de Sudo / Escalada (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          },
+          "unit": "pps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 14
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_netstat_TcpExt_SyncookiesSent[1m])",
+          "legendFormat": "SYN Cookies/s",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "[9] DDoS L4: SYN Cookies/s",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 14
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_netstat_Tcp_InSegs[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs[2m]), 1)",
+          "legendFormat": "Ratio In/Out",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "[10] DDoS L4: Ratio Asimetría TCP",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 14
+      },
+      "id": 14,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(node_nf_conntrack_entries / node_nf_conntrack_entries_limit) * 100",
+          "legendFormat": "Conntrack %",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "[11] DDoS L4: Tabla Conntrack %",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 200
+              },
+              {
+                "color": "red",
+                "value": 400
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 18
+      },
+      "id": 15,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate({job=\"nginx_access\"}[1m])) or vector(0)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "[12] DDoS L7: Tráfico HTTP (req/s)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 18
+      },
+      "id": 16,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "(sum(rate({job=\"nginx_access\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "[13] Bot Scan: Ráfaga 403/404 (/min)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 18
+      },
+      "id": 17,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "[14] Bot Scan: Rutas Críticas (.env/.git 5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 15,
+        "y": 18
+      },
+      "id": 18,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "[15] Bot Scan: Escáneres (sqlmap/nikto 5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 18
+      },
+      "id": 19,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(cs_active_decisions) or vector(0)",
+          "legendFormat": "Decisiones Activas",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "[16] IPS: Decisiones Activas CrowdSec",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana",
+        "uid": "-- Grafana --"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
+      "id": 20,
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 20,
+        "showInstances": false,
+        "showOptions": "current",
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": true,
+          "normal": true,
+          "pending": true
+        },
+        "viewMode": "list"
+      },
+      "pluginVersion": "11.0.0",
+      "title": "Monitor en Vivo de las 16 Reglas de Alerta (Normal / Pending / Firing)",
+      "type": "alertlist"
     },
     {
       "datasource": {
@@ -665,11 +1436,11 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 7
+        "w": 8,
+        "x": 8,
+        "y": 22
       },
-      "id": 10,
+      "id": 21,
       "options": {
         "legend": {
           "calcs": [
@@ -715,19 +1486,30 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_netstat_TcpExt_SyncookiesSent[2m])",
-          "legendFormat": "SYN Cookies Enviadas/s",
+          "expr": "rate(node_netstat_TcpExt_SyncookiesSent[1m])",
+          "legendFormat": "SYN Cookies/s",
           "range": true,
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_netstat_Tcp_InSegs[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs[2m]), 1)",
+          "legendFormat": "Ratio Asimetría In/Out",
+          "range": true,
+          "refId": "D"
         }
       ],
-      "title": "Tráfico TCP Segmentos In/Out y SYN Cookies",
+      "title": "Serie Temporal DDoS L4: Segmentos TCP In/Out, Ratio Asimetría y SYN Cookies",
       "type": "timeseries"
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "loki",
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -767,8 +1549,6 @@
             }
           },
           "mappings": [],
-          "max": 100,
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -778,17 +1558,17 @@
               }
             ]
           },
-          "unit": "percent"
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 15
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 22
       },
-      "id": 11,
+      "id": 22,
       "options": {
         "legend": {
           "calcs": [
@@ -808,101 +1588,51 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "rate(node_disk_io_time_seconds_total[5m]) * 100",
-          "legendFormat": "{{device}} I/O Saturación %",
-          "range": true,
+          "expr": "sum(rate({job=\"nginx_access\"}[1m])) or vector(0)",
+          "legendFormat": "HTTP req/s",
+          "queryType": "range",
           "refId": "A"
-        }
-      ],
-      "title": "Actividad I/O de Disco (%)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "red",
-                  "index": 1,
-                  "text": "CAÍDO"
-                },
-                "1": {
-                  "color": "green",
-                  "index": 0,
-                  "text": "ACTIVO"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
         },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 15
-      },
-      "id": 12,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "pluginVersion": "11.0.0",
-      "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "node_systemd_unit_state{name=~\"(ssh|sshd|nginx|crowdsec|prometheus|loki|loki-server|alloy|grafana-server)\\\\.service\",state=\"active\"}",
-          "legendFormat": "{{name}}",
-          "range": true,
-          "refId": "A"
+          "expr": "(sum(rate({job=\"nginx_access\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
+          "legendFormat": "Ráfagas 403/404 (/min)",
+          "queryType": "range",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
+          "legendFormat": "Rutas Críticas .env/.git (5m)",
+          "queryType": "range",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
+          "legendFormat": "Escáneres sqlmap/nikto (5m)",
+          "queryType": "range",
+          "refId": "D"
         }
       ],
-      "title": "Estado Servicios Críticos systemd",
-      "type": "stat"
+      "title": "Serie Temporal DDoS L7 & Bot Scan: HTTP/s, 403/404, .env/.git y Escáneres",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -910,11 +1640,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 30
       },
-      "id": 13,
+      "id": 23,
       "panels": [],
-      "title": "Seguridad Activa, SSH, Firewall y Web (Loki Logs)",
+      "title": "Explorador de Logs en Tiempo Real (Loki)",
       "type": "row"
     },
     {
@@ -977,9 +1707,9 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 31
       },
-      "id": 14,
+      "id": 24,
       "options": {
         "legend": {
           "calcs": [
@@ -1008,7 +1738,7 @@
           "refId": "A"
         }
       ],
-      "title": "Volumen de Eventos de Log por Fuente (5m)",
+      "title": "Volumen de Logs por Fuente (5m)",
       "type": "timeseries"
     },
     {
@@ -1020,9 +1750,9 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 30
+        "y": 38
       },
-      "id": 15,
+      "id": 25,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -1057,9 +1787,9 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 30
+        "y": 38
       },
-      "id": 16,
+      "id": 26,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -1094,9 +1824,9 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 47
       },
-      "id": 17,
+      "id": 27,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -1119,7 +1849,7 @@
           "refId": "A"
         }
       ],
-      "title": "Logs de Acceso Nginx y Journald del Sistema",
+      "title": "Logs de Accesos Web Nginx y Journald del Sistema",
       "type": "logs"
     }
   ],
@@ -1131,7 +1861,8 @@
     "observability",
     "crowdsec",
     "loki",
-    "prometheus"
+    "prometheus",
+    "ddos"
   ],
   "templating": {
     "list": []
@@ -1144,6 +1875,6 @@
   "timezone": "browser",
   "title": "Ubuntu Observabilidad & Seguridad Activa",
   "uid": "ubuntu-sec-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
