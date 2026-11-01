@@ -1,0 +1,1058 @@
+apiVersion: 1
+
+groups:
+  # ============================================================================
+  # GRUPO 1: Salud y Recursos del Host (5 Reglas PromQL)
+  # ============================================================================
+  - orgId: 1
+    name: salud-y-recursos-host
+    folder: Observabilidad y Seguridad
+    interval: 1m
+    rules:
+      # 1. Saturación de CPU (> 85% durante 5m)
+      - uid: alert_host_cpu_high
+        title: "[Recursos] Saturación de CPU (>85%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 85
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "Uso de CPU superior al 85% durante más de 5 minutos"
+          description: "El procesador del host registra una carga sostenida por encima del 85%. Verifica procesos intensivos con top/htop."
+        labels:
+          severity: warning
+          category: resources
+        isPaused: false
+
+      # 2. Memoria RAM Crítica (> 90% durante 5m)
+      - uid: alert_host_ram_critical
+        title: "[Recursos] Memoria RAM Crítica (>90%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 90
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "Memoria RAM disponible inferior al 10% (uso > 90%)"
+          description: "Riesgo inminente de activación de OOM Killer en el kernel Linux."
+        labels:
+          severity: critical
+          category: resources
+        isPaused: false
+
+      # 3. Almacenamiento Lleno (> 85% durante 10m)
+      - uid: alert_host_disk_full
+        title: "[Recursos] Almacenamiento Lleno (>85%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 85
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 10m
+        annotations:
+          summary: "Partición de disco por encima del 85% de capacidad"
+          description: "Uno o más sistemas de archivos reales superan el 85% de ocupación. Revisa /var/log y retención de TSDB/Loki."
+        labels:
+          severity: warning
+          category: resources
+        isPaused: false
+
+      # 4. Cuello de Botella I/O de Disco (> 80% durante 5m)
+      - uid: alert_host_disk_io
+        title: "[Recursos] Cuello de Botella I/O (>80%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(node_disk_io_time_seconds_total[5m]) * 100'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 80
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "Saturación de I/O en disco (> 80% durante 5 minutos)"
+          description: "El subsistema de almacenamiento presenta alta latencia o saturación de operaciones por segundo."
+        labels:
+          severity: warning
+          category: resources
+        isPaused: false
+
+      # 5. Caída de Servicio Crítico systemd (for: 1m)
+      - uid: alert_systemd_service_down
+        title: "[Disponibilidad] Servicio Crítico Caído"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'min(node_systemd_unit_state{name=~"(ssh|sshd|nginx|crowdsec)\\.service",state="active"})'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 1m
+        annotations:
+          summary: "Un servicio crítico (SSH, Nginx o CrowdSec) ha dejado de estar activo"
+          description: "El colector systemd de Alloy detectó state=active igual a 0 en una unidad esencial."
+        labels:
+          severity: critical
+          category: availability
+        isPaused: false
+
+  # ============================================================================
+  # GRUPO 2: Seguridad Activa, DDoS L4/L7 y Accesos (11 Reglas LogQL + PromQL)
+  # ============================================================================
+  - orgId: 1
+    name: seguridad-ddos-y-accesos
+    folder: Observabilidad y Seguridad
+    interval: 1m
+    rules:
+      # 6. Fuerza Bruta SSH (> 15 fallos en 5m)
+      - uid: alert_ssh_brute_force
+        title: "[Acceso] Fuerza Bruta SSH (>15 en 5m)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="ssh_auth"} |= "Failed password"[5m]))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 15
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+        annotations:
+          summary: "Ataque de fuerza bruta SSH detectado (> 15 intentos fallidos en 5m)"
+          description: "Se registraron múltiples fallos de contraseña en /var/log/auth.log. Verifica las decisiones de CrowdSec."
+        labels:
+          severity: warning
+          category: security
+        isPaused: false
+
+      # 7. Login SSH Exitoso (> 0 en 5m, disparo inmediato)
+      - uid: alert_ssh_login_success
+        title: "[Acceso] Login SSH Exitoso"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="ssh_auth"} |= "Accepted "[5m]))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+        annotations:
+          summary: "Inicio de sesión SSH exitoso registrado en el servidor"
+          description: "Se ha abierto una sesión SSH (Accepted publickey/password). Puedes silenciar esta regla con: sudo ./setup_alerts.sh --ssh-login-alert off"
+        labels:
+          severity: info
+          category: security
+        isPaused: false
+
+      # 8. Fallo de Sudo / Intento de Escalada de Privilegios (> 2 en 5m)
+      - uid: alert_sudo_auth_failure
+        title: "[Acceso] Fallo de Sudo / Escalada (>2 en 5m)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="ssh_auth"} |= "sudo:" |= "authentication failure"[5m]))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 2
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+        annotations:
+          summary: "Múltiples fallos de autenticación sudo (> 2 en 5 minutos)"
+          description: "Un usuario local está intentando escalar privilegios sin autorización válida en /var/log/auth.log."
+        labels:
+          severity: critical
+          category: security
+        isPaused: false
+
+      # 9. Inundación SYN Flood (SYN Cookies enviadas > 0 durante 1m)
+      - uid: alert_ddos_syn_flood
+        title: "[DDoS L4] Inundación SYN Flood (SYN Cookies)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(node_netstat_TcpExt_SyncookiesSent[1m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 1m
+        annotations:
+          summary: "El kernel Linux está emitiendo SYN Cookies (cola SYN saturada)"
+          description: "Posible ataque SYN Flood L4 en curso contra puertos TCP expuestos."
+        labels:
+          severity: warning
+          category: ddos
+        isPaused: false
+
+      # 10. Asimetría de Segmentos TCP (Ratio In/Out > 5 durante 2m)
+      - uid: alert_ddos_tcp_asymmetry
+        title: "[DDoS L4] Asimetría de Segmentos TCP (Ratio > 5)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(node_netstat_Tcp_InSegs[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs[2m]), 1)'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 5
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: "Relación anormal entre segmentos TCP entrantes y salientes (> 5:1)"
+          description: "Indica barrido masivo de puertos o inundación de paquetes TCP sin respuesta proporcional."
+        labels:
+          severity: warning
+          category: ddos
+        isPaused: false
+
+      # 11. Tabla Conntrack al Límite (> 80% durante 2m)
+      - uid: alert_ddos_conntrack_limit
+        title: "[DDoS L4] Tabla Conntrack al Límite (>80%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(node_nf_conntrack_entries / node_nf_conntrack_entries_limit) * 100'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 80
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: "Tabla nf_conntrack por encima del 80% de su capacidad máxima"
+          description: "Si alcanza el 100%, el firewall descartará nuevas conexiones legítimas (nf_conntrack: table full)."
+        labels:
+          severity: critical
+          category: ddos
+        isPaused: false
+
+      # 12. Inundación HTTP Web (> 400 req/s durante 2m)
+      - uid: alert_ddos_http_flood
+        title: "[DDoS L7] Inundación HTTP Web (>400 req/s)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(rate({job="nginx_access"}[1m]))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 400
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: "Tasa de peticiones HTTP en Nginx supera el umbral configurado (400 req/s)"
+          description: "Posible ataque DDoS Capa 7 contra aplicaciones web. Ajusta el umbral a tu tráfico con: sudo ./setup_alerts.sh --http-rps-threshold <NUM>"
+        labels:
+          severity: critical
+          category: ddos
+        isPaused: false
+
+      # 13. Ráfaga de Errores HTTP 404/403 (> 100/min durante 2m)
+      - uid: alert_bot_403_404_burst
+        title: "[Bot Scan] Ráfaga de Errores 404/403 (>100/min)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(rate({job="nginx_access"} | json | status =~ "403|404"[2m])) * 60'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 180
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 100
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: "Más de 100 respuestas HTTP 403/404 por minuto en Nginx"
+          description: "Fuzzing de directorios o enumeración de recursos inexistentes en curso."
+        labels:
+          severity: warning
+          category: botscan
+        isPaused: false
+
+      # 14. Sondeo de Rutas Críticas (.env, .git, wp-admin, phpmyadmin, actuator)
+      - uid: alert_bot_critical_paths
+        title: "[Bot Scan] Sondeo de Rutas Críticas (.env/.git/wp-admin)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="nginx_access"} |~ "(?i)(\\.env|\\.git|wp-admin|phpmyadmin|actuator)"[5m]))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 10
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+        annotations:
+          summary: "Intentos repetidos de acceso a archivos sensibles (.env, .git, wp-admin)"
+          description: "Bots automatizados buscando credenciales expuestas o paneles administrativos (> 10 intentos en 5m)."
+        labels:
+          severity: warning
+          category: botscan
+        isPaused: false
+
+      # 15. Escáner de Vulnerabilidades (sqlmap, nikto, nuclei, nmap, masscan, zgrab)
+      - uid: alert_bot_vuln_scanner
+        title: "[Bot Scan] Escáner de Vulnerabilidades (sqlmap/nikto/nuclei)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="nginx_access"} |~ "(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)"[5m]))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+        annotations:
+          summary: "Detectada firma de escáner de vulnerabilidades ofensivo en logs de Nginx"
+          description: "Se identificó tráfico con huellas de sqlmap, nikto, nuclei, nmap, masscan o zgrab."
+        labels:
+          severity: critical
+          category: botscan
+        isPaused: false
+
+      # 16. Oleada de Bloqueos en CrowdSec (> 50 decisiones activas durante 1m)
+      - uid: alert_crowdsec_ban_wave
+        title: "[IPS] Oleada de Bloqueos CrowdSec (>50 decisiones)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'cs_active_decisions'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 50
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: OK
+        for: 1m
+        annotations:
+          summary: "CrowdSec mantiene más de 50 decisiones de baneo activas simultáneamente"
+          description: "Revisa los escenarios disparados con: sudo cscli decisions list"
+        labels:
+          severity: warning
+          category: ips
+        isPaused: false

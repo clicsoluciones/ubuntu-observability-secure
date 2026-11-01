@@ -223,6 +223,8 @@ do_uninstall() {
     "/etc/systemd/system/alloy.service.d/observability.conf"
     "/etc/grafana/provisioning/datasources/observability.yml"
     "/etc/grafana/provisioning/dashboards/observability-dashboards.yml"
+    "/etc/grafana/provisioning/alerting/observability-alerts.yml"
+    "/etc/grafana/provisioning/alerting/observability-contactpoints.yml"
     "/var/lib/grafana/dashboards/ubuntu-security-overview.json"
     "/etc/audit/rules.d/50-observability.rules"
     "/etc/prometheus/rules/host-alerts.yml"
@@ -489,7 +491,7 @@ for log_f in /var/log/auth.log /var/log/ufw.log; do
   fi
 done
 
-echo "==> Configurando fuentes de datos y dashboards preconfigurados de Grafana"
+echo "==> Configurando fuentes de datos, dashboards y las 16 alertas preconfiguradas de Grafana"
 run_cmd install -d -m 0755 /etc/grafana/provisioning/datasources
 run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/datasources/datasources.yml" \
   /etc/grafana/provisioning/datasources/observability.yml
@@ -497,6 +499,11 @@ run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/datasources/datasource
 run_cmd install -d -m 0755 /etc/grafana/provisioning/dashboards
 run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/dashboards/dashboards.yml" \
   /etc/grafana/provisioning/dashboards/observability-dashboards.yml
+
+run_cmd install -d -m 0755 /etc/grafana/provisioning/alerting
+run_cmd install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
+  /etc/grafana/provisioning/alerting/observability-alerts.yml
+run_cmd chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
 
 run_cmd install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
 run_cmd install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
@@ -734,7 +741,7 @@ echo "Log auditoría: $LOG_FILE"
 echo
 echo "IMPORTANTE:"
 echo "1) Este script NO habilita UFW ni modifica reglas SSH para evitar bloquear el acceso remoto."
-echo "2) Las reglas Prometheus quedan cargadas en /etc/prometheus/rules/host-alerts.yml."
-echo "3) Las alertas LogQL están en rules/logql-alerts.md; deben añadirse en Grafana Alerting."
+echo "2) Las 16 alertas (PromQL + LogQL) quedaron aprovisionadas en Grafana (/etc/grafana/provisioning/alerting/observability-alerts.yml) y Prometheus (/etc/prometheus/rules/host-alerts.yml)."
+echo "3) Para configurar notificaciones (Discord/Slack/Telegram) o ajustar umbrales: sudo ./setup_alerts.sh --help"
 echo "4) El formato JSON de Nginx está en nginx/observability-log-format.conf; requiere activación manual por vhost."
 echo "5) Comprueba métricas reales y servicios antes de considerar la protección operativa."

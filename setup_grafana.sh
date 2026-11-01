@@ -92,6 +92,12 @@ install -d -m 0755 /etc/grafana/provisioning/dashboards
 install -m 0644 "$SCRIPT_DIR/grafana/provisioning/dashboards/dashboards.yml" \
   /etc/grafana/provisioning/dashboards/observability-dashboards.yml
 
+echo "==> Aprovisionando catálogo de 16 reglas en Grafana Unified Alerting"
+install -d -m 0755 /etc/grafana/provisioning/alerting
+install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
+  /etc/grafana/provisioning/alerting/observability-alerts.yml
+chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
+
 install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
 install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
   /var/lib/grafana/dashboards/ubuntu-security-overview.json

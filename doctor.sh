@@ -309,7 +309,22 @@ if [[ -f /var/log/auth.log ]]; then
   fi
 fi
 
-# Verificar permisos de /var/lib/grafana y dashboard aprovisionado
+# Verificar permisos de /var/lib/grafana, dashboard y alertas aprovisionadas
+if [[ -f /etc/grafana/provisioning/alerting/observability-alerts.yml ]]; then
+  report_pass "Catálogo de 16 reglas de Grafana Alerting aprovisionado (/etc/grafana/provisioning/alerting/observability-alerts.yml)"
+else
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    report_fail "Falta el archivo de alertas /etc/grafana/provisioning/alerting/observability-alerts.yml"
+  elif [[ -f "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" ]]; then
+    install -d -m 0755 /etc/grafana/provisioning/alerting
+    install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
+      /etc/grafana/provisioning/alerting/observability-alerts.yml
+    chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
+    NEED_GRAFANA_RESTART=1
+    report_fixed "Aprovisionadas las 16 alertas en /etc/grafana/provisioning/alerting/observability-alerts.yml"
+  fi
+fi
+
 if [[ -d /var/lib/grafana ]]; then
   bad_graf_files="$(find /var/lib/grafana \( ! -user grafana -o ! -group grafana \) -print -quit 2>/dev/null || true)"
   if [[ -z "$bad_graf_files" ]]; then

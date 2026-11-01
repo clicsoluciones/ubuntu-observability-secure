@@ -9,8 +9,7 @@ Paquete de aprovisionamiento seguro basado en el documento de arquitectura `Obse
 - **Flujo de métricas**: Alloy -> Prometheus por `127.0.0.1:9090`.
 - **Flujo de logs**: Logs de autenticación, UFW, Nginx y journald hacia Loki en `127.0.0.1:3100`.
 - **Datasources y Dashboard Grafana preconfigurados**: Prometheus y Loki conectados a loopback, más el panel **"Ubuntu Observabilidad & Seguridad Activa"** aprovisionado automáticamente como pantalla de inicio (*Home Dashboard*).
-- **Reglas Prometheus**: CPU, RAM, disco, I/O, servicios systemd, SYN cookies, asimetría TCP, conntrack y métricas CrowdSec en `/etc/prometheus/rules/host-alerts.yml`.
-- **Reglas LogQL**: Alertas en `rules/logql-alerts.md` para Grafana Alerting.
+- **Catálogo de 16 Reglas de Alerta preaprovisionadas**: Las 5 reglas de salud/recursos del host (PromQL) y las 11 reglas de seguridad, DDoS L4/L7 y escaneo de bots (LogQL + PromQL) se inyectan automáticamente en **Grafana Unified Alerting** (`/etc/grafana/provisioning/alerting/observability-alerts.yml`) y en **Prometheus** (`/etc/prometheus/rules/host-alerts.yml`).
 - **Reglas auditd**: Auditoría de identidad (`/etc/passwd`, `/etc/shadow`, sudoers) y SSH (`/etc/ssh/sshd_config`).
 - **CrowdSec**: Motor de análisis local y colecciones `linux`, `sshd`, `nginx`, `base-http-scenarios`, `http-cve`.
 
@@ -148,7 +147,23 @@ sudo ./setup_grafana.sh --reset-password
 sudo ./setup_grafana.sh --password 'TuNuevaPasswordSegura'
 ```
 
-### 8. Diagnóstico y Autorreparación (`doctor.sh`)
+### 8. Aprovisionamiento y Personalización de las 16 Alertas (`setup_alerts.sh`)
+Aunque `install.sh` y `setup_grafana.sh` ya instalan automáticamente las 16 reglas en Grafana, puedes usar `setup_alerts.sh` en cualquier momento para actualizarlas, personalizar umbrales o conectar canales de notificación (Discord, Slack, Telegram) desde la terminal:
+```bash
+chmod +x setup_alerts.sh
+# Instalar/actualizar las 16 reglas en Grafana y Prometheus:
+sudo ./setup_alerts.sh
+
+# Silenciar la alerta informativa de cada Login SSH Exitoso y subir el umbral HTTP flood a 800 req/s:
+sudo ./setup_alerts.sh --ssh-login-alert off --http-rps-threshold 800
+
+# Configurar automáticamente un Contact Point de Discord, Slack o Telegram:
+sudo ./setup_alerts.sh --discord-webhook 'https://discord.com/api/webhooks/ID/TOKEN'
+sudo ./setup_alerts.sh --slack-webhook 'https://hooks.slack.com/services/T00/B00/X00'
+sudo ./setup_alerts.sh --telegram '123456:ABC-DEF...' '-100123456789'
+```
+
+### 9. Diagnóstico y Autorreparación (`doctor.sh`)
 Si algún servicio (`loki`, `alloy`, `prometheus`, `grafana-server`) presenta fallos de arranque tras una actualización o si el panel **"Logs de Autenticación SSH y Sudo (`/var/log/auth.log`)"** muestra `No data`, ejecuta la herramienta de diagnóstico y autorreparación:
 ```bash
 chmod +x doctor.sh
@@ -251,11 +266,47 @@ Para activarlo:
 
 ---
 
-## Configuración de Alertas y Notificaciones (Contact Points)
+## Catálogo de 16 Reglas de Alerta Preaprovisionadas y Notificaciones
 
-Las reglas de Prometheus y Loki detectan anomalías y disparan alertas, pero **el servidor no incluye un servicio SMTP local**. Para recibir notificaciones, se configuran canales de entrega en Grafana Alerting:
+El sistema aprovisiona de fábrica las **16 reglas de alerta** definidas en la arquitectura dentro de **Grafana Unified Alerting** (menú **Alerting** > **Alert rules** > carpeta **Observabilidad y Seguridad**):
 
-### Opción A: Webhooks directos (Sin SMTP - Recomendado)
+### Grupo 1: `salud-y-recursos-host` (5 Reglas PromQL)
+| # | UID | Regla en Grafana | Condición / Umbral | Duración (`for`) | Severidad |
+| :- | :--- | :--- | :--- | :--- | :--- |
+| 1 | `alert_host_cpu_high` | `[Recursos] Saturación de CPU (>85%)` | Uso de CPU `> 85%` | `5m` | `warning` |
+| 2 | `alert_host_ram_critical` | `[Recursos] Memoria RAM Crítica (>90%)` | Memoria usada `> 90%` | `5m` | `critical` |
+| 3 | `alert_host_disk_full` | `[Recursos] Almacenamiento Lleno (>85%)` | Disco ocupado `> 85%` (excl. tmpfs/overlay) | `10m` | `warning` |
+| 4 | `alert_host_disk_io` | `[Recursos] Cuello de Botella I/O (>80%)` | Tiempo de I/O de disco `> 80%` | `5m` | `warning` |
+| 5 | `alert_systemd_service_down` | `[Disponibilidad] Servicio Crítico Caído` | `ssh`, `sshd`, `nginx` o `crowdsec` inactivo (`< 1`) | `1m` | `critical` |
+
+### Grupo 2: `seguridad-ddos-y-accesos` (11 Reglas LogQL y PromQL)
+| # | UID | Regla en Grafana | Fuente | Condición / Umbral | Duración (`for`) | Severidad |
+| :- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 6 | `alert_ssh_brute_force` | `[Acceso] Fuerza Bruta SSH (>15 en 5m)` | Loki (`ssh_auth`) | `> 15` `"Failed password"` en 5m | `0s` | `warning` |
+| 7 | `alert_ssh_login_success` | `[Acceso] Login SSH Exitoso` | Loki (`ssh_auth`) | `> 0` `"Accepted "` en 5m | `0s` | `info` |
+| 8 | `alert_sudo_auth_failure` | `[Acceso] Fallo de Sudo / Escalada (>2 en 5m)` | Loki (`ssh_auth`) | `> 2` fallos PAM de `sudo:` en 5m | `0s` | `critical` |
+| 9 | `alert_ddos_syn_flood` | `[DDoS L4] Inundación SYN Flood (SYN Cookies)` | Prometheus | `rate(SyncookiesSent[1m]) > 0` | `1m` | `warning` |
+| 10 | `alert_ddos_tcp_asymmetry` | `[DDoS L4] Asimetría de Segmentos TCP (Ratio > 5)` | Prometheus | Ratio `Tcp_InSegs / Tcp_OutSegs > 5` | `2m` | `warning` |
+| 11 | `alert_ddos_conntrack_limit` | `[DDoS L4] Tabla Conntrack al Límite (>80%)` | Prometheus | Uso de tabla `nf_conntrack > 80%` | `2m` | `critical` |
+| 12 | `alert_ddos_http_flood` | `[DDoS L7] Inundación HTTP Web (>400 req/s)` | Loki (`nginx_access`) | Tasa global `> 400 req/s` | `2m` | `critical` |
+| 13 | `alert_bot_403_404_burst` | `[Bot Scan] Ráfaga de Errores 404/403 (>100/min)` | Loki (`nginx_access`) | `> 100` errores `403\|404` por minuto | `2m` | `warning` |
+| 14 | `alert_bot_critical_paths` | `[Bot Scan] Sondeo de Rutas Críticas (.env/.git/wp-admin)` | Loki (`nginx_access`) | `> 10` accesos a `.env/.git/wp-admin/...` en 5m | `0s` | `warning` |
+| 15 | `alert_bot_vuln_scanner` | `[Bot Scan] Escáner de Vulnerabilidades (sqlmap/nikto/nuclei)` | Loki (`nginx_access`) | `> 0` firmas de `sqlmap/nikto/nuclei/nmap/...` | `0s` | `critical` |
+| 16 | `alert_crowdsec_ban_wave` | `[IPS] Oleada de Bloqueos CrowdSec (>50 decisiones)` | Prometheus | `cs_active_decisions > 50` | `1m` | `warning` |
+
+### Configuración de Canales de Entrega (Contact Points)
+
+Las 16 reglas evalúan métricas y logs continuamente, pero **el servidor no incluye un servicio SMTP local**. Puedes configurar el canal de entrega automáticamente con `setup_alerts.sh` o desde la interfaz web:
+
+#### Vía CLI Automatizada (Recomendado)
+```bash
+sudo ./setup_alerts.sh --discord-webhook 'https://discord.com/api/webhooks/...'
+# O para Slack / Telegram:
+sudo ./setup_alerts.sh --slack-webhook 'https://hooks.slack.com/services/...'
+sudo ./setup_alerts.sh --telegram 'BOT_TOKEN' 'CHAT_ID'
+```
+
+#### Opción A: Webhooks directos en la UI de Grafana (Sin SMTP)
 
 Puedes enviar alertas a Discord, Slack o Telegram vía HTTPS sin configurar servidores de correo:
 
