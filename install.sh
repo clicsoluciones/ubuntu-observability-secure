@@ -436,12 +436,27 @@ run_cmd chown -R prometheus:prometheus /etc/prometheus
 run_cmd chmod 0640 /etc/prometheus/prometheus.yml /etc/prometheus/rules/host-alerts.yml
 
 echo "==> Configurando Loki solo en loopback (retención 14 días)"
+# Garantizar la existencia del grupo y usuario del sistema loki
+if ! getent group loki >/dev/null 2>&1; then
+  run_cmd groupadd --system loki || true
+fi
+if ! getent passwd loki >/dev/null 2>&1; then
+  run_cmd useradd --system -g loki -d /var/lib/loki -s /usr/sbin/nologin loki || true
+fi
+
 run_cmd install -d -o loki -g loki -m 0750 /var/lib/loki
 run_cmd install -m 0640 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
 run_cmd chown root:loki /etc/loki/config.yml
 
 echo "==> Configurando Alloy y permisos de lectura de logs"
-run_cmd usermod -aG adm,systemd-journal alloy
+# Garantizar existencia del grupo y usuario alloy
+if ! getent group alloy >/dev/null 2>&1; then
+  run_cmd groupadd --system alloy || true
+fi
+if ! getent passwd alloy >/dev/null 2>&1; then
+  run_cmd useradd --system -g alloy -d /var/lib/alloy -s /usr/sbin/nologin alloy || true
+fi
+run_cmd usermod -aG adm,systemd-journal alloy || true
 run_cmd install -m 0640 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
 run_cmd chown root:alloy /etc/alloy/config.alloy
 
