@@ -109,6 +109,15 @@ run_cmd() {
   fi
 }
 
+# Wrapper for apt-get with automatic dpkg lock retry
+apt_cmd() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[DRY-RUN] apt-get -o DPkg::Lock::Timeout=120 $*"
+  else
+    apt-get -o DPkg::Lock::Timeout=120 "$@"
+  fi
+}
+
 # Pre-flight Root Check
 if [[ $EUID -ne 0 ]]; then
   echo "Error: Requiere privilegios de superusuario. Ejecuta con: sudo $0" >&2
@@ -376,8 +385,8 @@ done
 
 echo "==> Instalando dependencias base"
 export DEBIAN_FRONTEND=noninteractive
-run_cmd apt-get update
-run_cmd apt-get install -y ca-certificates curl wget gnupg apt-transport-https \
+apt_cmd update
+apt_cmd install -y ca-certificates curl wget gnupg apt-transport-https \
   auditd audispd-plugins ufw prometheus
 
 echo "==> Añadiendo repositorio oficial Grafana Labs (clave APT dedicada)"
@@ -394,8 +403,8 @@ deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable mai
 EOF
 fi
 
-run_cmd apt-get update
-run_cmd apt-get install -y grafana loki alloy
+apt_cmd update
+apt_cmd install -y grafana loki alloy
 
 echo "==> Configurando parámetros de kernel (conserva backup)"
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -485,8 +494,8 @@ if [[ "$INSTALL_CROWDSEC" == "1" ]]; then
       fi
       sh "$CROWDSEC_INSTALL_SCRIPT"
       rm -f "$CROWDSEC_INSTALL_SCRIPT"
-      apt-get update
-      apt-get install -y crowdsec
+      apt_cmd update
+      apt_cmd install -y crowdsec
     fi
   fi
   run_cmd cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx \
@@ -496,7 +505,7 @@ if [[ "$INSTALL_CROWDSEC" == "1" ]]; then
 
   if [[ "$INSTALL_BOUNCER" == "1" ]]; then
     echo "==> Instalando bouncer nftables solicitado (--with-bouncer o INSTALL_BOUNCER=1)"
-    run_cmd apt-get install -y crowdsec-firewall-bouncer-nftables
+    apt_cmd install -y crowdsec-firewall-bouncer-nftables
     run_cmd systemctl enable --now crowdsec-firewall-bouncer
   else
     echo "AVISO: CrowdSec queda en modo detección. No bloquea IPs hasta instalar/configurar un remediation component (usa --with-bouncer si lo requieres)."
