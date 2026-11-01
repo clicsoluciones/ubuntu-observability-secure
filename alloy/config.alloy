@@ -8,13 +8,54 @@ prometheus.exporter.unix "host_ubuntu" {
 }
 
 // Process metrics -> TOP processes by CPU & Memory
+// Optimized to match key system and application services without high-cardinality explosion
 prometheus.exporter.process "top_processes" {
-	track_children       = false
+	track_children      = false
 	remove_empty_groups = true
 
 	matcher {
-		name    = "{{.Comm}}"
-		cmdline = [".+"]
+		name = "nginx"
+		comm = ["nginx"]
+	}
+
+	matcher {
+		name = "dockerd"
+		comm = ["dockerd", "containerd", "docker-proxy"]
+	}
+
+	matcher {
+		name = "php-fpm"
+		comm = ["php-fpm", "php-fpm8.1", "php-fpm8.2", "php-fpm8.3"]
+	}
+
+	matcher {
+		name = "node"
+		comm = ["node", "bun", "deno"]
+	}
+
+	matcher {
+		name = "python"
+		comm = ["python", "python3", "gunicorn", "uvicorn"]
+	}
+
+	matcher {
+		name = "database"
+		comm = ["mysqld", "mariadbd", "postgres", "redis-server", "mongod"]
+	}
+
+	matcher {
+		name = "java"
+		comm = ["java"]
+	}
+
+	matcher {
+		name = "observability"
+		comm = ["grafana-server", "loki", "prometheus", "alloy", "crowdsec"]
+	}
+
+	matcher {
+		name = "system"
+		comm = ["systemd", "sshd", "rsyslogd", "auditd", "ufw"]
 	}
 }
 
