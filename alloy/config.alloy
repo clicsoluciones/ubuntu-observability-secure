@@ -1,0 +1,48 @@
+// Host metrics -> Prometheus remote_write
+prometheus.exporter.unix "host_ubuntu" {
+  enable_collectors = ["meminfo", "netstat", "conntrack", "softnet", "systemd", "processes"]
+  filesystem {
+    fs_types_exclude = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|tmpfs|overlay|proc|sysfs|tracefs)$"
+  }
+}
+
+prometheus.scrape "host_metrics" {
+  scrape_interval = "15s"
+  targets         = prometheus.exporter.unix.host_ubuntu.targets
+  forward_to      = [prometheus.remote_write.local_prom.receiver]
+}
+
+prometheus.remote_write "local_prom" {
+  endpoint {
+    url = "http://127.0.0.1:9090/api/v1/write"
+  }
+}
+
+// Read common Ubuntu auth/UFW/Nginx logs. Missing files are simply not tailed.
+local.file_match "security_and_web_logs" {
+  path_targets = [
+    { __path__ = "/var/log/auth.log",         job = "ssh_auth",     host = constants.hostname },
+    { __path__ = "/var/log/ufw.log",          job = "ufw_firewall", host = constants.hostname },
+    { __path__ = "/var/log/nginx/access.log", job = "nginx_access", host = constants.hostname },
+    { __path__ = "/var/log/nginx/error.log",  job = "nginx_error",  host = constants.hostname },
+  ]
+}
+
+loki.source.file "log_scraper" {
+  targets    = local.file_match.security_and_web_logs.targets
+  forward_to = [loki.write.local_loki.receiver]
+}
+
+loki.source.journal "systemd_journal" {
+  forward_to = [loki.write.local_loki.receiver]
+  labels = {
+    job  = "systemd_journal",
+    host = constants.hostname,
+  }
+}
+
+loki.write "local_loki" {
+  endpoint {
+    url = "http://127.0.0.1:3100/loki/api/v1/push"
+  }
+}
