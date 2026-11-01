@@ -116,6 +116,8 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # Setup logging (in dry-run mode, also append if possible, otherwise skip file redirection if write fails)
+# Note: When printing sensitive credentials at the end, output is directed straight to /dev/tty
+# to avoid leaking the generated Grafana admin password into $LOG_FILE.
 if [[ "$DRY_RUN" -eq 0 ]]; then
   touch "$LOG_FILE" 2>/dev/null || true
   exec > >(tee -a "$LOG_FILE") 2>&1
@@ -548,6 +550,62 @@ else
   ss -lntp | grep -E ":($GRAFANA_PORT|9090|3100|12345|6060)\b" || true
 fi
 
+echo
+echo "==> Configurando credenciales administrativas de Grafana"
+GRAFANA_PASS_SET=0
+GRAFANA_ADMIN_PASS=""
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[DRY-RUN] Generar clave aleatoria segura y asignar con: grafana-cli admin reset-admin-password <PASS>"
+  GRAFANA_ADMIN_PASS="[GENERADA_ALEATORIAMENTE_EN_EJECUCION_REAL]"
+else
+  # Generar contraseña segura criptográficamente de 20 caracteres
+  if command -v openssl >/dev/null 2>&1; then
+    GRAFANA_ADMIN_PASS="$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9!@#$%^&*' | head -c 20)"
+  else
+    GRAFANA_ADMIN_PASS="$(tr -dc 'a-zA-Z0-9!@#$%^&*' < /dev/urandom | head -c 20)"
+  fi
+
+  if command -v grafana-cli >/dev/null 2>&1; then
+    if grafana-cli admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
+      GRAFANA_PASS_SET=1
+    fi
+  fi
+fi
+
+# Imprimir credenciales directamente a la terminal si está disponible
+# para que no se almacenen en $LOG_FILE
+print_credentials() {
+  cat <<BANNER
+
+================================================================================
+                   CREDENCIALES Y ACCESO DE GRAFANA                             
+================================================================================
+ URL Local:       http://127.0.0.1:$GRAFANA_PORT
+ Usuario Admin:   admin
+BANNER
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo " Contraseña:      $GRAFANA_ADMIN_PASS"
+  elif [[ "$GRAFANA_PASS_SET" -eq 1 ]]; then
+    echo " Contraseña:      $GRAFANA_ADMIN_PASS"
+    echo
+    echo " [ATENCIÓN] Copia y guarda esta contraseña en tu gestor de claves AHORA."
+    echo " Por seguridad, esta contraseña NO queda almacenada en ningún archivo"
+    echo " de configuración ni en el registro de log ($LOG_FILE)."
+  else
+    echo " No se pudo ejecutar 'grafana-cli' automáticamente."
+    echo " Puedes asignar tu contraseña manualmente con:"
+    echo " sudo grafana-cli admin reset-admin-password '<TU_CONTRASEÑA>'"
+  fi
+  echo "================================================================================"
+  echo
+}
+
+if [[ -w /dev/tty ]]; then
+  print_credentials > /dev/tty
+else
+  print_credentials
+fi
 echo
 echo "INSTALACIÓN BASE COMPLETADA."
 echo "Grafana:    http://127.0.0.1:$GRAFANA_PORT (acceso recomendado por túnel SSH)"

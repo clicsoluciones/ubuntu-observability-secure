@@ -143,14 +143,20 @@ sudo ./install.sh --uninstall
 
 Todos los servicios están configurados estrictamente en loopback (`127.0.0.1`). Para acceder a ellos de forma segura sin exponer puertos a Internet, utiliza un túnel SSH desde tu estación de trabajo local:
 
-### Grafana (Puerto 3000)
+### Grafana (Puerto 3000 o el especificado con `--port`)
 ```bash
 ssh -L 3000:127.0.0.1:3000 usuario@IP_DEL_SERVIDOR
 ```
-Abre en tu navegador `http://localhost:3000`. Grafana incluye el usuario inicial `admin`. Si necesitas restablecer la contraseña:
-```bash
-sudo grafana-cli admin reset-admin-password 'TU_CONTRASEÑA_SEGURA'
-```
+Abre en tu navegador `http://localhost:3000` con el usuario `admin`. 
+
+> [!IMPORTANT]
+> **Gestión de contraseñas seguras:**
+> Al finalizar la instalación, el script genera una contraseña criptográfica aleatoria de 20 caracteres para el usuario `admin` y la muestra en pantalla. 
+> Por principios de seguridad (Zero-Trace), **esta contraseña NO se almacena en disco ni en `/var/log/observability-install.log`**. Debes copiarla y guardarla en tu gestor de contraseñas.
+> Si necesitas restablecerla en el futuro, ejecuta:
+> ```bash
+> sudo grafana-cli admin reset-admin-password 'TU_NUEVA_CONTRASEÑA'
+> ```
 
 ### Prometheus (Puerto 9090)
 ```bash
