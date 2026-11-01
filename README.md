@@ -16,6 +16,41 @@ Paquete de aprovisionamiento seguro basado en el documento de arquitectura `Obse
 
 ---
 
+## Arquitectura del Flujo de Datos
+
+```mermaid
+flowchart TD
+    subgraph Fuentes ["Fuentes del Sistema"]
+        A1["Métricas de Host / Hardware<br>(meminfo, netstat, conntrack, systemd)"]
+        A2["Logs del Servidor<br>(/var/log/auth.log, nginx, ufw, journald)"]
+        A3["CrowdSec Security Engine<br>(127.0.0.1:6060)"]
+    end
+
+    subgraph Agentes ["Ingesta y Recolección"]
+        B1["Grafana Alloy"]
+    end
+
+    subgraph Almacenamiento ["Bases de Datos Locales"]
+        C1["Prometheus TSDB<br>(127.0.0.1:9090)"]
+        C2["Grafana Loki<br>(127.0.0.1:3100)"]
+    end
+
+    subgraph Visualizacion ["Visualización y Alertas"]
+        D["Grafana Dashboard & Alerting<br>(127.0.0.1:3000)"]
+    end
+
+    A1 -->|Scrape nativo unix| B1
+    A2 -->|Tail y parseo de logs| B1
+    B1 -->|remote_write métricas| C1
+    B1 -->|push logs| C2
+    A3 -->|Scrape de métricas cs_*| C1
+
+    C1 -->|Datasource: Prometheus| D
+    C2 -->|Datasource: Loki| D
+```
+
+---
+
 ## Requisitos y Pre-flight
 
 El instalador efectúa verificaciones previas automatizadas antes de alterar el sistema:
