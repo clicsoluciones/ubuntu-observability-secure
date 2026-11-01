@@ -581,27 +581,53 @@ echo "==> Configurando credenciales administrativas de Grafana"
 GRAFANA_PASS_SET=0
 GRAFANA_ADMIN_PASS=""
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN] Generar clave aleatoria segura y asignar con: grafana-cli admin reset-admin-password <PASS>"
+  echo "[DRY-RUN] Generar clave aleatoria segura y asignar apuntando a /var/lib/grafana"
   GRAFANA_ADMIN_PASS="[GENERADA_ALEATORIAMENTE_EN_EJECUCION_REAL]"
 else
   # Generar contraseña alfanumérica segura sin símbolos conflictivos con expansiones de shell
   GRAFANA_ADMIN_PASS="$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)"
 
-  # Comando para resetear clave de admin en Grafana
-  # Se ejecuta explícitamente en el directorio homepath y pasando --config
+  # Limpiar posible base de datos huérfana creada en /usr/share/grafana/data por ejecuciones sin paths.data
+  rm -rf /usr/share/grafana/data 2>/dev/null || true
+
+  # Esperar a que Grafana inicialice /var/lib/grafana/grafana.db y su socket HTTP (máx 30s)
+  for _ in {1..15}; do
+    if [[ -f /var/lib/grafana/grafana.db ]] && curl -fsSL "http://127.0.0.1:${GRAFANA_PORT}/api/health" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+
+  # Ejecutar pasando explícitamente cfg:default.paths.data=/var/lib/grafana igual que el unit de systemd
   local_homepath="/usr/share/grafana"
   local_cfg="/etc/grafana/grafana.ini"
+  local_data="/var/lib/grafana"
+  local_logs="/var/log/grafana"
+  local_plugins="/var/lib/grafana/plugins"
 
   if command -v grafana >/dev/null 2>&1; then
-    if (cd "$local_homepath" 2>/dev/null && grafana cli --homepath "$local_homepath" --config "$local_cfg" admin reset-admin-password "$GRAFANA_ADMIN_PASS"); then
+    if runuser -u grafana -- grafana cli \
+      --homepath "$local_homepath" \
+      --config "$local_cfg" \
+      --configOverrides="cfg:default.paths.data=$local_data cfg:default.paths.logs=$local_logs cfg:default.paths.plugins=$local_plugins" \
+      admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
       GRAFANA_PASS_SET=1
     fi
   fi
+
   if [[ "$GRAFANA_PASS_SET" -eq 0 ]] && command -v grafana-cli >/dev/null 2>&1; then
-    if (cd "$local_homepath" 2>/dev/null && grafana-cli --homepath "$local_homepath" --config "$local_cfg" admin reset-admin-password "$GRAFANA_ADMIN_PASS"); then
+    if runuser -u grafana -- grafana-cli \
+      --homepath "$local_homepath" \
+      --config "$local_cfg" \
+      --configOverrides="cfg:default.paths.data=$local_data cfg:default.paths.logs=$local_logs cfg:default.paths.plugins=$local_plugins" \
+      admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
       GRAFANA_PASS_SET=1
     fi
   fi
+
+  # Asegurar permisos correctos en /var/lib/grafana y reiniciar para limpiar lockouts en memoria
+  chown -R grafana:grafana /var/lib/grafana 2>/dev/null || true
+  systemctl restart grafana-server || true
 fi
 
 # Imprimir credenciales directamente a la terminal si está disponible

@@ -156,9 +156,13 @@ Abre en tu navegador `http://localhost:3000` (o `http://localhost:3001`) con el 
 
 > [!IMPORTANT]
 > **Gestión de credenciales y aislamiento de servicios:**
-> - **Grafana (Único acceso administrativo con credenciales)**: Al finalizar la instalación, el script genera una contraseña criptográfica aleatoria de 20 caracteres para el usuario `admin` y la muestra exclusivamente en la terminal. Por principios de seguridad (Zero-Trace), **esta contraseña NO se almacena en disco ni en `/var/log/observability-install.log`**. Debes copiarla y guardarla en tu gestor de contraseñas. Si requieres cambiarla:
+> - **Grafana (Único acceso administrativo con credenciales)**: Al finalizar la instalación, el script genera una contraseña criptográfica aleatoria de 24 caracteres para el usuario `admin`, la aplica sobre `/var/lib/grafana/grafana.db` y la muestra exclusivamente en la terminal. Por principios de seguridad (Zero-Trace), **esta contraseña NO se almacena en disco ni en `/var/log/observability-install.log`**. Debes copiarla y guardarla en tu gestor de contraseñas. Si requieres cambiarla manualmente en el futuro:
 >   ```bash
->   sudo grafana-cli admin reset-admin-password 'TU_NUEVA_CONTRASEÑA'
+>   sudo runuser -u grafana -- grafana cli \
+>     --homepath "/usr/share/grafana" \
+>     --config "/etc/grafana/grafana.ini" \
+>     --configOverrides="cfg:default.paths.data=/var/lib/grafana cfg:default.paths.logs=/var/log/grafana cfg:default.paths.plugins=/var/lib/grafana/plugins" \
+>     admin reset-admin-password 'TU_NUEVA_CONTRASEÑA'
 >   ```
 > - **Prometheus (`:9090`), Loki (`:3100`) y Alloy (`:12345`)**: 
 >   Estos componentes operan como motores backend internos sin mecanismos de contraseña de usuario local por diseño. Su seguridad no depende de contraseñas, sino del **aislamiento estricto a nivel de socket de red**: están configurados para escuchar única y exclusivamente en la interfaz de loopback (`127.0.0.1`). Ningún proceso o cliente fuera del propio servidor puede comunicarse con ellos a menos que se abra un túnel SSH administrativo autenticado con clave privada.
