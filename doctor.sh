@@ -416,12 +416,15 @@ for svc in prometheus "$LOKI_SERVICE"; do
     else
       systemctl reset-failed "$svc" 2>/dev/null || true
       systemctl enable --now "$svc" 2>/dev/null || true
-      systemctl restart "$svc" 2>/dev/null || true
-      sleep 2
+      # Usar timeout de 5 segundos con timeout de GNU coreutils para que systemctl JAMAS congele el script
+      timeout 5s systemctl restart "$svc" 2>/dev/null || true
+      sleep 1
       if systemctl is-active --quiet "$svc" 2>/dev/null; then
         report_fixed "Servicio '$svc' recuperado y activo"
       else
-        report_fail "Servicio '$svc' continúa fallando tras intento de reinicio (revisa: journalctl -u $svc -n 30)"
+        report_fail "Servicio '$svc' continúa fallando tras intento de reinicio"
+        echo "  [DIAGNÓSTICO] Últimas líneas de journalctl para $svc:"
+        journalctl -u "$svc" -n 6 --no-pager 2>/dev/null | sed 's/^/    /' || true
       fi
     fi
   fi
@@ -447,12 +450,12 @@ fi
 # Ahora comprobar Alloy, Grafana y CrowdSec
 if [[ "$NEED_ALLOY_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   systemctl reset-failed alloy 2>/dev/null || true
-  systemctl restart alloy 2>/dev/null || true
+  timeout 5s systemctl restart alloy 2>/dev/null || true
   sleep 1
 fi
 if [[ "$NEED_GRAFANA_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   systemctl reset-failed grafana-server 2>/dev/null || true
-  systemctl restart grafana-server 2>/dev/null || true
+  timeout 5s systemctl restart grafana-server 2>/dev/null || true
   sleep 1
 fi
 
@@ -469,12 +472,14 @@ for svc in alloy grafana-server crowdsec; do
     else
       systemctl reset-failed "$svc" 2>/dev/null || true
       systemctl enable --now "$svc" 2>/dev/null || true
-      systemctl restart "$svc" 2>/dev/null || true
+      timeout 5s systemctl restart "$svc" 2>/dev/null || true
       sleep 1
       if systemctl is-active --quiet "$svc" 2>/dev/null; then
         report_fixed "Servicio '$svc' recuperado y activo"
       else
-        report_fail "Servicio '$svc' no pudo iniciar (revisa: journalctl -u $svc -n 30)"
+        report_fail "Servicio '$svc' no pudo iniciar"
+        echo "  [DIAGNÓSTICO] Últimas líneas de journalctl para $svc:"
+        journalctl -u "$svc" -n 6 --no-pager 2>/dev/null | sed 's/^/    /' || true
       fi
     fi
   fi
