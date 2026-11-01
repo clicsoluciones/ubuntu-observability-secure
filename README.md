@@ -139,26 +139,31 @@ sudo ./install.sh --uninstall
 
 ---
 
-## Acceso Seguro a los Paneles
+## Acceso Seguro a los Paneles y Credenciales
 
 Todos los servicios están configurados estrictamente en loopback (`127.0.0.1`). Para acceder a ellos de forma segura sin exponer puertos a Internet, utiliza un túnel SSH desde tu estación de trabajo local:
 
-### Grafana (Puerto 3000 o el especificado con `--port`)
+### 1. Grafana (Puerto 3000 o el especificado con `--port`)
+Conexión por túnel SSH:
 ```bash
+# Si usas el puerto por defecto (3000):
 ssh -L 3000:127.0.0.1:3000 usuario@IP_DEL_SERVIDOR
+
+# Si especificaste un puerto alternativo (ej. 3001):
+ssh -L 3001:127.0.0.1:3001 usuario@IP_DEL_SERVIDOR
 ```
-Abre en tu navegador `http://localhost:3000` con el usuario `admin`. 
+Abre en tu navegador `http://localhost:3000` (o `http://localhost:3001`) con el usuario `admin`. 
 
 > [!IMPORTANT]
-> **Gestión de contraseñas seguras:**
-> Al finalizar la instalación, el script genera una contraseña criptográfica aleatoria de 20 caracteres para el usuario `admin` y la muestra en pantalla. 
-> Por principios de seguridad (Zero-Trace), **esta contraseña NO se almacena en disco ni en `/var/log/observability-install.log`**. Debes copiarla y guardarla en tu gestor de contraseñas.
-> Si necesitas restablecerla en el futuro, ejecuta:
-> ```bash
-> sudo grafana-cli admin reset-admin-password 'TU_NUEVA_CONTRASEÑA'
-> ```
+> **Gestión de contraseñas de la suite:**
+> - **Grafana**: Al finalizar la instalación, el script genera una contraseña criptográfica aleatoria de 20 caracteres para el usuario `admin` y la muestra en pantalla. Por principios de seguridad (Zero-Trace), **esta contraseña NO se almacena en disco ni en `/var/log/observability-install.log`**. Debes copiarla y guardarla en tu gestor de contraseñas. Si requieres cambiarla:
+>   ```bash
+>   sudo grafana-cli admin reset-admin-password 'TU_NUEVA_CONTRASEÑA'
+>   ```
+> - **Prometheus (`:9090`) y Loki (`:3100`)**: Por arquitectura de seguridad, se ejecutan enlazados exclusivamente al loopback del servidor (`127.0.0.1`) sin contraseñas locales abiertas. Toda interacción se realiza a través de Grafana o mediante túnel SSH administrativo.
+> - **CrowdSec LAPI (`:8080`)**: Utiliza claves de máquina autogeneradas internamente para la comunicación entre el daemon `crowdsec`, `cscli` y los bouncers.
 
-### Prometheus (Puerto 9090)
+### 2. Prometheus (Puerto 9090)
 ```bash
 ssh -L 9090:127.0.0.1:9090 usuario@IP_DEL_SERVIDOR
 ```

@@ -578,27 +578,39 @@ print_credentials() {
   cat <<BANNER
 
 ================================================================================
-                   CREDENCIALES Y ACCESO DE GRAFANA                             
+            CREDENCIALES Y ACCESO DE LA SUITE DE OBSERVABILIDAD                 
 ================================================================================
- URL Local:       http://127.0.0.1:$GRAFANA_PORT
- Usuario Admin:   admin
+ [1] Grafana Dashboard (Gestor Central de Visualización y Alertas)
+   - URL Local:       http://127.0.0.1:$GRAFANA_PORT
+   - Usuario:         admin
 BANNER
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo " Contraseña:      $GRAFANA_ADMIN_PASS"
+    echo "   - Contraseña:      $GRAFANA_ADMIN_PASS"
   elif [[ "$GRAFANA_PASS_SET" -eq 1 ]]; then
-    echo " Contraseña:      $GRAFANA_ADMIN_PASS"
-    echo
-    echo " [ATENCIÓN] Copia y guarda esta contraseña en tu gestor de claves AHORA."
-    echo " Por seguridad, esta contraseña NO queda almacenada en ningún archivo"
-    echo " de configuración ni en el registro de log ($LOG_FILE)."
+    echo "   - Contraseña:      $GRAFANA_ADMIN_PASS"
   else
-    echo " No se pudo ejecutar 'grafana-cli' automáticamente."
-    echo " Puedes asignar tu contraseña manualmente con:"
-    echo " sudo grafana-cli admin reset-admin-password '<TU_CONTRASEÑA>'"
+    echo "   - Contraseña:      (Asignar con: sudo grafana-cli admin reset-admin-password '<PASS>')"
   fi
-  echo "================================================================================"
-  echo
+
+  cat <<BANNER
+
+ [2] Otros Servicios Internos (Loopback 127.0.0.1)
+   - Prometheus:      http://127.0.0.1:9090  (Sin contraseña por diseño: aislado en loopback)
+   - Loki:            http://127.0.0.1:3100  (Sin contraseña por diseño: aislado en loopback)
+   - Grafana Alloy:   http://127.0.0.1:12345 (Sin contraseña: API interna de telemetría)
+   - CrowdSec LAPI:   http://127.0.0.1:8080  (Autenticación interna por API Key entre agentes/cscli)
+   - CrowdSec Metrics:http://127.0.0.1:6060  (Endpoint de métricas para Prometheus)
+
+ [3] Conexión Segura Recomendada (Túnel SSH desde tu máquina local):
+   ssh -L $GRAFANA_PORT:127.0.0.1:$GRAFANA_PORT usuario@IP_DEL_SERVIDOR
+   (Luego abre en tu navegador: http://localhost:$GRAFANA_PORT)
+
+ [ATENCIÓN] Copia y guarda la contraseña de Grafana en tu gestor de claves AHORA.
+ Por seguridad (Zero-Trace), NO queda almacenada en ningún archivo de configuración
+ ni en el registro de log ($LOG_FILE).
+================================================================================
+BANNER
 }
 
 if [[ -w /dev/tty ]]; then
