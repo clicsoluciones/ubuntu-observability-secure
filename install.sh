@@ -11,6 +11,7 @@ BACKUP_DIR="/var/backups/observability-$(date +%Y%m%d-%H%M%S)"
 # Configuration & flags (CLI flags override environment variables)
 INSTALL_CROWDSEC="${INSTALL_CROWDSEC:-1}"
 INSTALL_BOUNCER="${INSTALL_BOUNCER:-0}"
+GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 DRY_RUN=0
 SKIP_PREFLIGHT=0
 ACTION="install"
@@ -23,6 +24,7 @@ Uso: sudo ./install.sh [OPCIONES]
 Instalador seguro de Observabilidad y Seguridad Activa en Ubuntu (22.04 / 24.04).
 
 Opciones:
+  --port <PUERTO>           Puerto HTTP para Grafana (por defecto: 3000).
   --dry-run                 Muestra los pasos y comandos sin realizar cambios en el sistema.
   --skip-preflight          Omite las advertencias y verificaciones previas (RAM, disco, red).
   --no-crowdsec             Deshabilita la instalación y configuración de CrowdSec.
@@ -32,11 +34,13 @@ Opciones:
   -h, --help                Muestra esta ayuda y termina.
 
 Variables de entorno compatibles:
+  GRAFANA_PORT=<1-65535>    (por defecto: 3000)
   INSTALL_CROWDSEC=0|1      (por defecto: 1)
   INSTALL_BOUNCER=0|1       (por defecto: 0)
 
 Ejemplos:
   sudo ./install.sh
+  sudo ./install.sh --port 3001
   sudo ./install.sh --dry-run
   sudo ./install.sh --with-bouncer
   sudo ./install.sh --rollback /var/backups/observability-20261101-120000
@@ -47,6 +51,14 @@ EOF
 # --- CLI Flag Parsing ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --port)
+      if [[ $# -lt 2 || -z "${2:-}" || ! "${2:-}" =~ ^[0-9]+$ || "${2:-}" -lt 1 || "${2:-}" -gt 65535 ]]; then
+        echo "Error: --port requiere un número de puerto válido (1-65535)." >&2
+        exit 1
+      fi
+      GRAFANA_PORT="$2"
+      shift 2
+      ;;
     --dry-run)
       DRY_RUN=1
       shift
@@ -428,11 +440,12 @@ run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/datasources/datasource
   /etc/grafana/provisioning/datasources/observability.yml
 run_cmd install -d -m 0755 /etc/systemd/system/grafana-server.service.d
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN] Configurar /etc/systemd/system/grafana-server.service.d/observability.conf"
+  echo "[DRY-RUN] Configurar /etc/systemd/system/grafana-server.service.d/observability.conf (puerto $GRAFANA_PORT)"
 else
-  cat > /etc/systemd/system/grafana-server.service.d/observability.conf <<'EOF'
+  cat > /etc/systemd/system/grafana-server.service.d/observability.conf <<EOF
 [Service]
 Environment="GF_SERVER_HTTP_ADDR=127.0.0.1"
+Environment="GF_SERVER_HTTP_PORT=$GRAFANA_PORT"
 EOF
 fi
 
@@ -530,14 +543,14 @@ done
 echo
 echo "==> Puertos esperados (todos internos en loopback)"
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN: ss -lntp | grep -E ':(3000|9090|3100|12345|6060)\b']"
+  echo "[DRY-RUN: ss -lntp | grep -E ':($GRAFANA_PORT|9090|3100|12345|6060)\b']"
 else
-  ss -lntp | grep -E ':(3000|9090|3100|12345|6060)\b' || true
+  ss -lntp | grep -E ":($GRAFANA_PORT|9090|3100|12345|6060)\b" || true
 fi
 
 echo
 echo "INSTALACIÓN BASE COMPLETADA."
-echo "Grafana:    http://127.0.0.1:3000 (acceso recomendado por túnel SSH)"
+echo "Grafana:    http://127.0.0.1:$GRAFANA_PORT (acceso recomendado por túnel SSH)"
 echo "Prometheus: http://127.0.0.1:9090"
 echo "Loki:       http://127.0.0.1:3100"
 echo "Backup:     $BACKUP_DIR"

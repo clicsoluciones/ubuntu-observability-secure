@@ -77,6 +77,7 @@ sudo ./install.sh [OPCIONES]
 
 | Opción | Descripción |
 | :--- | :--- |
+| `--port <PUERTO>` | Define el puerto HTTP de escucha para Grafana (por defecto: `3000`). Útil si el 3000 ya está ocupado. |
 | `--dry-run` | Modo simulación: imprime cada comando y archivo a generar sin realizar cambios en el sistema. |
 | `--skip-preflight` | Omite las comprobaciones de RAM, disco libre y conectividad ante entornos restringidos o containers. |
 | `--no-crowdsec` | Omite la descarga, instalación y configuración de CrowdSec (equivalente a `INSTALL_CROWDSEC=0`). |
@@ -96,7 +97,14 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-### 2. Simulación (Dry-Run)
+### 2. Instalación en un puerto alternativo (si el 3000 está ocupado)
+```bash
+sudo ./install.sh --port 3001
+# O mediante variable de entorno:
+sudo GRAFANA_PORT=3001 ./install.sh
+```
+
+### 3. Simulación (Dry-Run)
 Verifica qué acciones se realizarían sin modificar el host:
 ```bash
 sudo ./install.sh --dry-run
