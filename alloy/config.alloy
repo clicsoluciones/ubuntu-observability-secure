@@ -7,9 +7,20 @@ prometheus.exporter.unix "host_ubuntu" {
 	}
 }
 
+// Process metrics -> TOP processes by CPU & Memory
+prometheus.exporter.process "top_processes" {
+	track_children       = false
+	remove_empty_groups = true
+
+	matcher {
+		name    = "{{.Comm}}"
+		cmdline = [".+"]
+	}
+}
+
 prometheus.scrape "host_metrics" {
 	scrape_interval = "15s"
-	targets         = prometheus.exporter.unix.host_ubuntu.targets
+	targets         = concat(prometheus.exporter.unix.host_ubuntu.targets, prometheus.exporter.process.top_processes.targets)
 	forward_to      = [prometheus.remote_write.local_prom.receiver]
 }
 
