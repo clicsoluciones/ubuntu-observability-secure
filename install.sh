@@ -584,22 +584,21 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "[DRY-RUN] Generar clave aleatoria segura y asignar con: grafana-cli admin reset-admin-password <PASS>"
   GRAFANA_ADMIN_PASS="[GENERADA_ALEATORIAMENTE_EN_EJECUCION_REAL]"
 else
-  # Generar contraseña segura criptográficamente de 20 caracteres
-  if command -v openssl >/dev/null 2>&1; then
-    GRAFANA_ADMIN_PASS="$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9!@#$%^&*' | head -c 20)"
-  else
-    GRAFANA_ADMIN_PASS="$(tr -dc 'a-zA-Z0-9!@#$%^&*' < /dev/urandom | head -c 20)"
-  fi
+  # Generar contraseña alfanumérica segura sin símbolos conflictivos con expansiones de shell
+  GRAFANA_ADMIN_PASS="$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)"
 
-  # Intento con 'grafana cli' (moderno) y fallback a 'grafana-cli' con --homepath
+  # Comando para resetear clave de admin en Grafana
+  # Se ejecuta explícitamente en el directorio homepath y pasando --config
   local_homepath="/usr/share/grafana"
+  local_cfg="/etc/grafana/grafana.ini"
+
   if command -v grafana >/dev/null 2>&1; then
-    if grafana cli ${local_homepath:+--homepath "$local_homepath"} admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
+    if (cd "$local_homepath" 2>/dev/null && grafana cli --homepath "$local_homepath" --config "$local_cfg" admin reset-admin-password "$GRAFANA_ADMIN_PASS"); then
       GRAFANA_PASS_SET=1
     fi
   fi
   if [[ "$GRAFANA_PASS_SET" -eq 0 ]] && command -v grafana-cli >/dev/null 2>&1; then
-    if grafana-cli ${local_homepath:+--homepath "$local_homepath"} admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
+    if (cd "$local_homepath" 2>/dev/null && grafana-cli --homepath "$local_homepath" --config "$local_cfg" admin reset-admin-password "$GRAFANA_ADMIN_PASS"); then
       GRAFANA_PASS_SET=1
     fi
   fi
