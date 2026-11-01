@@ -156,36 +156,53 @@ for sys_user in prometheus loki alloy grafana; do
   fi
 done
 
-# Verificar membresía de alloy en adm y systemd-journal
+# Verificar membresía de alloy en adm, systemd-journal (y docker si está instalado)
 alloy_groups="$(id -Gn alloy 2>/dev/null || true)"
-if [[ " $alloy_groups " == *" adm "* && " $alloy_groups " == *" systemd-journal "* ]]; then
-  report_pass "Usuario 'alloy' pertenece a los grupos 'adm' y 'systemd-journal'"
+expected_supp_groups="adm systemd-journal"
+need_group_fix=0
+
+if [[ " $alloy_groups " != *" adm "* || " $alloy_groups " != *" systemd-journal "* ]]; then
+  need_group_fix=1
+fi
+if getent group docker >/dev/null 2>&1; then
+  expected_supp_groups="adm systemd-journal docker"
+  if [[ " $alloy_groups " != *" docker "* ]]; then
+    need_group_fix=1
+  fi
+fi
+
+if [[ "$need_group_fix" -eq 0 ]]; then
+  report_pass "Usuario 'alloy' pertenece a los grupos requeridos ($expected_supp_groups)"
 else
   if [[ "$CHECK_ONLY" -eq 1 ]]; then
-    report_fail "Usuario 'alloy' no pertenece a 'adm' y/o 'systemd-journal' (actual: $alloy_groups)"
+    report_fail "Usuario 'alloy' no pertenece a todos los grupos requeridos ($expected_supp_groups; actual: $alloy_groups)"
   else
-    usermod -aG adm,systemd-journal alloy
+    if getent group docker >/dev/null 2>&1; then
+      usermod -aG adm,systemd-journal,docker alloy
+    else
+      usermod -aG adm,systemd-journal alloy
+    fi
     NEED_ALLOY_RESTART=1
-    report_fixed "Añadido usuario 'alloy' a los grupos 'adm' y 'systemd-journal'"
+    report_fixed "Añadido usuario 'alloy' a los grupos ($expected_supp_groups)"
   fi
 fi
 
 # Verificar drop-in systemd de Alloy para SupplementaryGroups
 ALLOY_DROPIN="/etc/systemd/system/alloy.service.d/observability.conf"
-if [[ -f "$ALLOY_DROPIN" ]] && grep -q "SupplementaryGroups=adm systemd-journal" "$ALLOY_DROPIN" 2>/dev/null; then
-  report_pass "Drop-in systemd de Alloy ($ALLOY_DROPIN) configurado"
+if [[ -f "$ALLOY_DROPIN" ]] && grep -q "SupplementaryGroups=${expected_supp_groups}" "$ALLOY_DROPIN" 2>/dev/null; then
+  report_pass "Drop-in systemd de Alloy ($ALLOY_DROPIN) configurado ($expected_supp_groups)"
 else
   if [[ "$CHECK_ONLY" -eq 1 ]]; then
-    report_fail "Falta drop-in systemd $ALLOY_DROPIN con SupplementaryGroups=adm systemd-journal"
+    report_fail "Falta o está desactualizado el drop-in systemd $ALLOY_DROPIN (requiere SupplementaryGroups=$expected_supp_groups)"
   else
     install -d -m 0755 /etc/systemd/system/alloy.service.d
-    cat > "$ALLOY_DROPIN" <<'EOF'
+    cat > "$ALLOY_DROPIN" <<EOF
 [Service]
-SupplementaryGroups=adm systemd-journal
+SupplementaryGroups=$expected_supp_groups
 EOF
     NEED_DAEMON_RELOAD=1
     NEED_ALLOY_RESTART=1
-    report_fixed "Creado $ALLOY_DROPIN (SupplementaryGroups=adm systemd-journal)"
+    report_fixed "Actualizado $ALLOY_DROPIN (SupplementaryGroups=$expected_supp_groups)"
   fi
 fi
 
@@ -212,8 +229,8 @@ fi
 
 if [[ ! -f /etc/loki/config.yml ]] && [[ -f "$SCRIPT_DIR/loki/config.yml" ]] && [[ "$CHECK_ONLY" -eq 0 ]]; then
   install -d -m 0755 /etc/loki
-  install -m 0640 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
-  chown root:loki /etc/loki/config.yml
+  install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
+  chown loki:loki /etc/loki/config.yml
   NEED_LOKI_RESTART=1
   report_fixed "Restaurado /etc/loki/config.yml desde el repositorio"
 fi
@@ -241,25 +258,33 @@ if [[ -f /etc/loki/config.yml ]]; then
     else
       chmod 0755 /etc/loki 2>/dev/null || true
       chown loki:loki /etc/loki/config.yml
-      chmod 0640 /etc/loki/config.yml
+      chmod 0644 /etc/loki/config.yml
       NEED_LOKI_RESTART=1
-      report_fixed "Ajustado propietario de /etc/loki/config.yml a loki:loki (0640) para lectura directa por el proceso"
+      report_fixed "Ajustado propietario de /etc/loki/config.yml a loki:loki (0644) para lectura directa por el proceso"
     fi
   fi
 fi
 
-# Alloy config & data directory permissions
-if [[ ! -f /etc/alloy/config.alloy ]] && [[ -f "$SCRIPT_DIR/alloy/config.alloy" ]] && [[ "$CHECK_ONLY" -eq 0 ]]; then
-  install -d -m 0755 /etc/alloy
-  install -m 0640 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
-  chown alloy:alloy /etc/alloy/config.alloy
-  NEED_ALLOY_RESTART=1
-  report_fixed "Restaurado /etc/alloy/config.alloy desde el repositorio"
+# Alloy config & data directory permissions (sincronizar con repo si falta soporte Docker o glob de Nginx)
+if [[ -f "$SCRIPT_DIR/alloy/config.alloy" ]]; then
+  if [[ ! -f /etc/alloy/config.alloy ]] || ! grep -q 'docker_containers' /etc/alloy/config.alloy 2>/dev/null; then
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_fail "/etc/alloy/config.alloy no existe o no incluye la colección de contenedores Docker y vhosts Nginx"
+    else
+      install -d -m 0755 /etc/alloy
+      install -m 0644 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
+      chown alloy:alloy /etc/alloy/config.alloy
+      NEED_ALLOY_RESTART=1
+      report_fixed "Actualizado /etc/alloy/config.alloy con recolección de logs Docker (stdout/stderr) y globs de Nginx"
+    fi
+  fi
 fi
 
 if [[ -f /etc/alloy/config.alloy ]]; then
   if command -v alloy >/dev/null 2>&1 && [[ "$CHECK_ONLY" -eq 0 ]]; then
     alloy fmt -w /etc/alloy/config.alloy >/dev/null 2>&1 || true
+    chown alloy:alloy /etc/alloy/config.alloy 2>/dev/null || true
+    chmod 0644 /etc/alloy/config.alloy 2>/dev/null || true
   fi
   if runuser -u alloy -- test -r /etc/alloy/config.alloy 2>/dev/null; then
     report_pass "Configuración /etc/alloy/config.alloy legible por usuario 'alloy'"
@@ -269,9 +294,9 @@ if [[ -f /etc/alloy/config.alloy ]]; then
     else
       chmod 0755 /etc/alloy 2>/dev/null || true
       chown alloy:alloy /etc/alloy/config.alloy
-      chmod 0640 /etc/alloy/config.alloy
+      chmod 0644 /etc/alloy/config.alloy
       NEED_ALLOY_RESTART=1
-      report_fixed "Ajustados permisos de /etc/alloy/config.alloy (alloy:alloy 0640)"
+      report_fixed "Ajustados permisos de /etc/alloy/config.alloy (alloy:alloy 0644)"
     fi
   fi
 fi
@@ -323,6 +348,24 @@ else
     chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
     NEED_GRAFANA_RESTART=1
     report_fixed "Aprovisionadas las 16 alertas en /etc/grafana/provisioning/alerting/observability-alerts.yml"
+  fi
+fi
+
+# Sincronizar el dashboard JSON (incluyendo panel de contenedores Docker)
+if [[ -f "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" ]]; then
+  if [[ -f /var/lib/grafana/dashboards/ubuntu-security-overview.json ]] && \
+     grep -q 'docker_containers' /var/lib/grafana/dashboards/ubuntu-security-overview.json 2>/dev/null; then
+    report_pass "Dashboard principal de Grafana actualizado (incluye panel de Logs de Aplicaciones Docker)"
+  else
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_fail "El dashboard en /var/lib/grafana/dashboards/ubuntu-security-overview.json no existe o no incluye el panel de logs Docker"
+    else
+      install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
+      install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
+        /var/lib/grafana/dashboards/ubuntu-security-overview.json
+      NEED_GRAFANA_RESTART=1
+      report_fixed "Actualizado /var/lib/grafana/dashboards/ubuntu-security-overview.json con panel de Logs de Aplicaciones Docker"
+    fi
   fi
 fi
 
@@ -488,7 +531,7 @@ echo
 echo -e "${C_BOLD}[5/5] Verificando ingesta real de métricas (Prometheus) y logs (Loki)...${C_RESET}"
 
 # 5.1 Prometheus metrics check
-prom_up="$(curl -fsSL "http://127.0.0.1:9090/api/v1/query?query=node_memory_MemTotal_bytes" 2>/dev/null || true)"
+prom_up="$(curl -fsSL --connect-timeout 2 --max-time 4 "http://127.0.0.1:9090/api/v1/query?query=node_memory_MemTotal_bytes" 2>/dev/null || true)"
 if echo "$prom_up" | grep -q '"result":\[{'; then
   report_pass "Prometheus recibe métricas de host desde Alloy (node_memory_MemTotal_bytes presente)"
 else
@@ -501,7 +544,7 @@ check_loki_ssh_auth() {
   now_ns="$(date +%s)000000000"
   # Ventana de búsqueda de 24 horas hacia atrás
   start_ns="$(( $(date +%s) - 86400 ))000000000"
-  resp="$(curl -fsSL -G "http://127.0.0.1:3100/loki/api/v1/query_range" \
+  resp="$(curl -fsSL --connect-timeout 2 --max-time 4 -G "http://127.0.0.1:3100/loki/api/v1/query_range" \
     --data-urlencode 'query={job="ssh_auth"}' \
     --data-urlencode "start=${start_ns}" \
     --data-urlencode "end=${now_ns}" \
@@ -556,7 +599,7 @@ fi
 # 5.3 Loki systemd_journal check
 now_ns="$(date +%s)000000000"
 start_ns="$(( $(date +%s) - 3600 ))000000000"
-journal_resp="$(curl -fsSL -G "http://127.0.0.1:3100/loki/api/v1/query_range" \
+journal_resp="$(curl -fsSL --connect-timeout 2 --max-time 4 -G "http://127.0.0.1:3100/loki/api/v1/query_range" \
   --data-urlencode 'query={job="systemd_journal"}' \
   --data-urlencode "start=${start_ns}" \
   --data-urlencode "end=${now_ns}" \
@@ -565,6 +608,15 @@ if echo "$journal_resp" | grep -q '"result":\[{'; then
   report_pass "Loki recibe logs de systemd-journal ({job=\"systemd_journal\"} activo)"
 else
   report_warn "Loki aún no reporta eventos recientes de {job=\"systemd_journal\"}"
+fi
+
+# 5.4 Docker container logs check (si /var/run/docker.sock existe)
+if [[ -S /var/run/docker.sock ]]; then
+  if runuser -u alloy -- test -r /var/run/docker.sock 2>/dev/null; then
+    report_pass "El usuario 'alloy' tiene permiso de lectura sobre el socket Docker (/var/run/docker.sock)"
+  else
+    report_warn "El socket /var/run/docker.sock existe pero el proceso 'alloy' requiere reinicio o permisos de grupo 'docker'"
+  fi
 fi
 
 # ------------------------------------------------------------------------------

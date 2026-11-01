@@ -7,7 +7,7 @@ Paquete de aprovisionamiento seguro basado en el documento de arquitectura `Obse
 - **Grafana OSS, Prometheus, Loki y Grafana Alloy**.
 - **Colectores Unix**: meminfo, netstat, conntrack, softnet, systemd y procesos.
 - **Flujo de métricas**: Alloy -> Prometheus por `127.0.0.1:9090`.
-- **Flujo de logs**: Logs de autenticación, UFW, Nginx y journald hacia Loki en `127.0.0.1:3100`.
+- **Flujo de logs**: Logs de autenticación (`/var/log/auth.log`), UFW (`/var/log/ufw.log`), todos los virtual hosts de Nginx (`/var/log/nginx/*access*.log` y `*error*.log`), **contenedores Docker** (`stdout` acceso y `stderr` errores vía `/var/run/docker.sock`) y `systemd-journal` hacia Loki en `127.0.0.1:3100`.
 - **Datasources y Dashboard Grafana preconfigurados**: Prometheus y Loki conectados a loopback, más el panel **"Ubuntu Observabilidad & Seguridad Activa"** aprovisionado automáticamente como pantalla de inicio (*Home Dashboard*).
 - **Catálogo de 16 Reglas de Alerta preaprovisionadas**: Las 5 reglas de salud/recursos del host (PromQL) y las 11 reglas de seguridad, DDoS L4/L7 y escaneo de bots (LogQL + PromQL) se inyectan automáticamente en **Grafana Unified Alerting** (`/etc/grafana/provisioning/alerting/observability-alerts.yml`) y en **Prometheus** (`/etc/prometheus/rules/host-alerts.yml`).
 - **Reglas auditd**: Auditoría de identidad (`/etc/passwd`, `/etc/shadow`, sudoers) y SSH (`/etc/ssh/sshd_config`).
@@ -173,8 +173,9 @@ sudo ./doctor.sh
 sudo ./doctor.sh --check-only
 ```
 `doctor.sh` verifica y corrige automáticamente:
-- Propiedad recursiva `loki:loki` en `/var/lib/loki` (`chunks`, `rules`, `compactor`).
-- Grupos suplementarios de Alloy (`adm`, `systemd-journal`) mediante drop-in de systemd y permisos de lectura sobre `/var/log/auth.log`.
+- Propiedad recursiva `loki:loki` en `/var/lib/loki` (`chunks`, `rules`, `compactor`) y permisos legibles en `/etc/loki/config.yml` y `/etc/alloy/config.alloy`.
+- Grupos suplementarios de Alloy (`adm`, `systemd-journal` y `docker` si Docker está instalado) mediante drop-in de systemd, otorgando lectura a `/var/log/auth.log`, `/var/log/nginx/*.log` y `/var/run/docker.sock`.
+- Sincronización automática de `alloy/config.alloy` y del dashboard de Grafana para incluir el panel **"Logs de Aplicaciones Docker (Acceso stdout & Errores stderr)"**.
 - Reinicio ordenado (`systemctl reset-failed`) esperando a que Loki responda en `:3100/ready` antes de iniciar Alloy.
 - Verificación de ingesta real en Prometheus y Loki (`{job="ssh_auth"}`), reseteando el caché de posiciones de Alloy si leyó el archivo cuando Loki aún no estaba disponible.
 

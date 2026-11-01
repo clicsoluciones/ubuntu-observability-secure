@@ -87,6 +87,30 @@ install -d -m 0755 /etc/grafana/provisioning/datasources
 install -m 0644 "$SCRIPT_DIR/grafana/provisioning/datasources/datasources.yml" \
   /etc/grafana/provisioning/datasources/observability.yml
 
+echo "==> Actualizando configuración de Alloy (logs de sistema, Nginx y contenedores Docker)"
+if [[ -f "$SCRIPT_DIR/alloy/config.alloy" ]]; then
+  install -d -m 0755 /etc/alloy
+  install -m 0644 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
+  chown alloy:alloy /etc/alloy/config.alloy 2>/dev/null || true
+  if command -v alloy >/dev/null 2>&1; then
+    alloy fmt -w /etc/alloy/config.alloy >/dev/null 2>&1 || true
+    chown alloy:alloy /etc/alloy/config.alloy 2>/dev/null || true
+    chmod 0644 /etc/alloy/config.alloy 2>/dev/null || true
+  fi
+  ALLOY_SUPP_GROUPS="adm systemd-journal"
+  if getent group docker >/dev/null 2>&1; then
+    usermod -aG adm,systemd-journal,docker alloy 2>/dev/null || true
+    ALLOY_SUPP_GROUPS="adm systemd-journal docker"
+  else
+    usermod -aG adm,systemd-journal alloy 2>/dev/null || true
+  fi
+  install -d -m 0755 /etc/systemd/system/alloy.service.d
+  cat > /etc/systemd/system/alloy.service.d/observability.conf <<EOF
+[Service]
+SupplementaryGroups=$ALLOY_SUPP_GROUPS
+EOF
+fi
+
 echo "==> Aprovisionando proveedor de Dashboards y paneles JSON"
 install -d -m 0755 /etc/grafana/provisioning/dashboards
 install -m 0644 "$SCRIPT_DIR/grafana/provisioning/dashboards/dashboards.yml" \
@@ -115,8 +139,24 @@ EOF
 rm -rf /usr/share/grafana/data 2>/dev/null || true
 chown -R grafana:grafana /var/lib/grafana 2>/dev/null || true
 
-echo "==> Recargando systemd y reiniciando grafana-server"
+echo "==> Recargando systemd y reiniciando servicios (Loki, Alloy y Grafana)"
 systemctl daemon-reload
+for svc in loki-server loki; do
+  if systemctl list-unit-files "${svc}.service" >/dev/null 2>&1; then
+    chown -R loki:loki /var/lib/loki 2>/dev/null || true
+    chmod 0644 /etc/loki/config.yml 2>/dev/null || true
+    systemctl reset-failed "$svc" 2>/dev/null || true
+    systemctl enable --now "$svc" 2>/dev/null || true
+    systemctl restart "$svc" 2>/dev/null || true
+    break
+  fi
+done
+if systemctl list-unit-files alloy.service >/dev/null 2>&1; then
+  systemctl reset-failed alloy 2>/dev/null || true
+  systemctl enable --now alloy 2>/dev/null || true
+  systemctl restart alloy 2>/dev/null || true
+fi
+systemctl reset-failed grafana-server 2>/dev/null || true
 systemctl enable --now grafana-server
 systemctl restart grafana-server
 

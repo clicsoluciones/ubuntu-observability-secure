@@ -459,10 +459,10 @@ fi
 run_cmd install -d -o loki -g loki -m 0750 /var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor
 run_cmd chown -R loki:loki /var/lib/loki
 run_cmd install -d -m 0755 /etc/loki
-run_cmd install -m 0640 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
+run_cmd install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
 run_cmd chown loki:loki /etc/loki/config.yml
 
-echo "==> Configurando Alloy y permisos de lectura de logs"
+echo "==> Configurando Alloy y permisos de lectura de logs (sistema, Nginx y Docker)"
 # Garantizar existencia del grupo y usuario alloy
 if ! getent group alloy >/dev/null 2>&1; then
   run_cmd groupadd --system alloy || true
@@ -470,20 +470,28 @@ fi
 if ! getent passwd alloy >/dev/null 2>&1; then
   run_cmd useradd --system -g alloy -d /var/lib/alloy -s /usr/sbin/nologin alloy || true
 fi
-run_cmd usermod -aG adm,systemd-journal alloy || true
+
+ALLOY_SUPP_GROUPS="adm systemd-journal"
+if getent group docker >/dev/null 2>&1; then
+  run_cmd usermod -aG adm,systemd-journal,docker alloy || true
+  ALLOY_SUPP_GROUPS="adm systemd-journal docker"
+else
+  run_cmd usermod -aG adm,systemd-journal alloy || true
+fi
+
 run_cmd install -d -o alloy -g alloy -m 0750 /var/lib/alloy
 run_cmd install -d -m 0755 /etc/alloy
-run_cmd install -m 0640 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
+run_cmd install -m 0644 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
 run_cmd chown alloy:alloy /etc/alloy/config.alloy
 
-# Reforzar grupos suplementarios en systemd para que alloy pueda leer /var/log/auth.log y journald
+# Reforzar grupos suplementarios en systemd para que alloy pueda leer /var/log/auth.log, journald y /var/run/docker.sock
 run_cmd install -d -m 0755 /etc/systemd/system/alloy.service.d
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN] Configurar /etc/systemd/system/alloy.service.d/observability.conf (SupplementaryGroups=adm systemd-journal)"
+  echo "[DRY-RUN] Configurar /etc/systemd/system/alloy.service.d/observability.conf (SupplementaryGroups=$ALLOY_SUPP_GROUPS)"
 else
-  cat > /etc/systemd/system/alloy.service.d/observability.conf <<'EOF'
+  cat > /etc/systemd/system/alloy.service.d/observability.conf <<EOF
 [Service]
-SupplementaryGroups=adm systemd-journal
+SupplementaryGroups=$ALLOY_SUPP_GROUPS
 EOF
 fi
 for log_f in /var/log/auth.log /var/log/ufw.log; do
@@ -593,8 +601,8 @@ else
     # Auto-formatear con alloy fmt -w si hay diferencias de estilo
     alloy fmt -w /etc/alloy/config.alloy >/dev/null 2>&1 || true
     alloy fmt --test /etc/alloy/config.alloy >/dev/null 2>&1 || true
-    chown root:alloy /etc/alloy/config.alloy 2>/dev/null || true
-    chmod 0640 /etc/alloy/config.alloy 2>/dev/null || true
+    chown alloy:alloy /etc/alloy/config.alloy 2>/dev/null || true
+    chmod 0644 /etc/alloy/config.alloy 2>/dev/null || true
   fi
 fi
 
