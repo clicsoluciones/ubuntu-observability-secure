@@ -155,15 +155,17 @@ ssh -L 3001:127.0.0.1:3001 usuario@IP_DEL_SERVIDOR
 Abre en tu navegador `http://localhost:3000` (o `http://localhost:3001`) con el usuario `admin`. 
 
 > [!IMPORTANT]
-> **Gestión de contraseñas de la suite:**
-> - **Grafana**: Al finalizar la instalación, el script genera una contraseña criptográfica aleatoria de 20 caracteres para el usuario `admin` y la muestra en pantalla. Por principios de seguridad (Zero-Trace), **esta contraseña NO se almacena en disco ni en `/var/log/observability-install.log`**. Debes copiarla y guardarla en tu gestor de contraseñas. Si requieres cambiarla:
+> **Gestión de credenciales y aislamiento de servicios:**
+> - **Grafana (Único acceso administrativo con credenciales)**: Al finalizar la instalación, el script genera una contraseña criptográfica aleatoria de 20 caracteres para el usuario `admin` y la muestra exclusivamente en la terminal. Por principios de seguridad (Zero-Trace), **esta contraseña NO se almacena en disco ni en `/var/log/observability-install.log`**. Debes copiarla y guardarla en tu gestor de contraseñas. Si requieres cambiarla:
 >   ```bash
 >   sudo grafana-cli admin reset-admin-password 'TU_NUEVA_CONTRASEÑA'
 >   ```
-> - **Prometheus (`:9090`) y Loki (`:3100`)**: Por arquitectura de seguridad, se ejecutan enlazados exclusivamente al loopback del servidor (`127.0.0.1`) sin contraseñas locales abiertas. Toda interacción se realiza a través de Grafana o mediante túnel SSH administrativo.
+> - **Prometheus (`:9090`), Loki (`:3100`) y Alloy (`:12345`)**: 
+>   Estos componentes operan como motores backend internos sin mecanismos de contraseña de usuario local por diseño. Su seguridad no depende de contraseñas, sino del **aislamiento estricto a nivel de socket de red**: están configurados para escuchar única y exclusivamente en la interfaz de loopback (`127.0.0.1`). Ningún proceso o cliente fuera del propio servidor puede comunicarse con ellos a menos que se abra un túnel SSH administrativo autenticado con clave privada.
 > - **CrowdSec LAPI (`:8080`)**: Utiliza claves de máquina autogeneradas internamente para la comunicación entre el daemon `crowdsec`, `cscli` y los bouncers.
 
-### 2. Prometheus (Puerto 9090)
+### Acceso administrativo opcional a Prometheus por túnel
+Si un administrador necesita depurar métricas directamente en Prometheus sin pasar por Grafana:
 ```bash
 ssh -L 9090:127.0.0.1:9090 usuario@IP_DEL_SERVIDOR
 ```

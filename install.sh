@@ -595,14 +595,7 @@ BANNER
 
   cat <<BANNER
 
- [2] Otros Servicios Internos (Loopback 127.0.0.1)
-   - Prometheus:      http://127.0.0.1:9090  (Sin contraseña por diseño: aislado en loopback)
-   - Loki:            http://127.0.0.1:3100  (Sin contraseña por diseño: aislado en loopback)
-   - Grafana Alloy:   http://127.0.0.1:12345 (Sin contraseña: API interna de telemetría)
-   - CrowdSec LAPI:   http://127.0.0.1:8080  (Autenticación interna por API Key entre agentes/cscli)
-   - CrowdSec Metrics:http://127.0.0.1:6060  (Endpoint de métricas para Prometheus)
-
- [3] Conexión Segura Recomendada (Túnel SSH desde tu máquina local):
+ [2] Conexión Segura Recomendada (Túnel SSH desde tu máquina local):
    ssh -L $GRAFANA_PORT:127.0.0.1:$GRAFANA_PORT usuario@IP_DEL_SERVIDOR
    (Luego abre en tu navegador: http://localhost:$GRAFANA_PORT)
 
@@ -620,11 +613,9 @@ else
 fi
 echo
 echo "INSTALACIÓN BASE COMPLETADA."
-echo "Grafana:    http://127.0.0.1:$GRAFANA_PORT (acceso recomendado por túnel SSH)"
-echo "Prometheus: http://127.0.0.1:9090"
-echo "Loki:       http://127.0.0.1:3100"
-echo "Backup:     $BACKUP_DIR"
-echo "Log:        $LOG_FILE"
+echo "Panel Grafana: http://127.0.0.1:$GRAFANA_PORT (acceso por túnel SSH)"
+echo "Backup previo: $BACKUP_DIR"
+echo "Log auditoría: $LOG_FILE"
 echo
 echo "IMPORTANTE:"
 echo "1) Este script NO habilita UFW ni modifica reglas SSH para evitar bloquear el acceso remoto."
