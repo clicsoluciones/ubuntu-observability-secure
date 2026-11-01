@@ -8,7 +8,7 @@ Paquete de aprovisionamiento seguro basado en el documento de arquitectura `Obse
 - **Colectores Unix**: meminfo, netstat, conntrack, softnet, systemd y procesos.
 - **Flujo de métricas**: Alloy -> Prometheus por `127.0.0.1:9090`.
 - **Flujo de logs**: Logs de autenticación, UFW, Nginx y journald hacia Loki en `127.0.0.1:3100`.
-- **Datasources Grafana preconfigurados**: Prometheus y Loki conectados a loopback.
+- **Datasources y Dashboard Grafana preconfigurados**: Prometheus y Loki conectados a loopback, más el panel **"Ubuntu Observabilidad & Seguridad Activa"** aprovisionado automáticamente como pantalla de inicio (*Home Dashboard*).
 - **Reglas Prometheus**: CPU, RAM, disco, I/O, servicios systemd, SYN cookies, asimetría TCP, conntrack y métricas CrowdSec en `/etc/prometheus/rules/host-alerts.yml`.
 - **Reglas LogQL**: Alertas en `rules/logql-alerts.md` para Grafana Alerting.
 - **Reglas auditd**: Auditoría de identidad (`/etc/passwd`, `/etc/shadow`, sudoers) y SSH (`/etc/ssh/sshd_config`).
@@ -137,6 +137,17 @@ Detiene los servicios, desactiva sus unidades systemd y remueve las configuracio
 sudo ./install.sh --uninstall
 ```
 
+### 7. Actualización rápida solo de Grafana (sin reinstalar todo)
+Si ya ejecutaste `install.sh` previamente y solo deseas inyectar el nuevo **Dashboard preconfigurado**, reparar la pantalla de inicio (*Home Dashboard*) o restablecer la contraseña de `admin` en la base de datos real (`/var/lib/grafana/grafana.db`):
+```bash
+chmod +x setup_grafana.sh
+sudo ./setup_grafana.sh
+
+# O si además deseas generar o fijar una nueva contraseña para 'admin':
+sudo ./setup_grafana.sh --reset-password
+sudo ./setup_grafana.sh --password 'TuNuevaPasswordSegura'
+```
+
 ---
 
 ## Acceso Seguro a los Paneles y Credenciales
@@ -153,6 +164,11 @@ ssh -L 3000:127.0.0.1:3000 usuario@IP_DEL_SERVIDOR
 ssh -L 3001:127.0.0.1:3001 usuario@IP_DEL_SERVIDOR
 ```
 Abre en tu navegador `http://localhost:3000` (o `http://localhost:3001`) con el usuario `admin`. 
+
+Al iniciar sesión, **se abrirá automáticamente en la pantalla de inicio (Home)** el panel preconfigurado **"Ubuntu Observabilidad & Seguridad Activa"** (también accesible desde el menú lateral **Dashboards** > carpeta **Observabilidad y Seguridad**), el cual incluye:
+1. **Estado General y Recursos**: Gauges en tiempo real de CPU, Memoria RAM, Disco Raíz (`/`), saturación de tabla Conntrack, IPs bloqueadas activamente en CrowdSec e intentos fallidos de SSH en los últimos 15 minutos.
+2. **Rendimiento del Host y Red**: Series temporales de CPU/RAM, tráfico de segmentos TCP In/Out + SYN Cookies enviadas, saturación I/O de disco y estado en vivo de servicios críticos (`ssh`, `nginx`, `crowdsec`, `prometheus`, `loki`, `alloy`, `grafana-server`).
+3. **Seguridad Activa, SSH, Firewall y Web (Loki Logs)**: Histograma de volumen de eventos por fuente y visores de logs en vivo para autenticación SSH/sudo (`/var/log/auth.log`), firewall UFW + errores de Nginx, y accesos web + `systemd-journal`.
 
 > [!IMPORTANT]
 > **Gestión de credenciales y aislamiento de servicios:**

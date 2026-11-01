@@ -221,6 +221,8 @@ do_uninstall() {
     "/etc/sysctl.d/99-observability-ddos.conf"
     "/etc/systemd/system/grafana-server.service.d/observability.conf"
     "/etc/grafana/provisioning/datasources/observability.yml"
+    "/etc/grafana/provisioning/dashboards/observability-dashboards.yml"
+    "/var/lib/grafana/dashboards/ubuntu-security-overview.json"
     "/etc/audit/rules.d/50-observability.rules"
     "/etc/prometheus/rules/host-alerts.yml"
     "/etc/apt/sources.list.d/grafana.list"
@@ -233,6 +235,10 @@ do_uninstall() {
       run_cmd rm -f "$f"
     fi
   done
+
+  if [[ -d "/var/lib/grafana/dashboards" ]]; then
+    run_cmd rmdir "/var/lib/grafana/dashboards" 2>/dev/null || true
+  fi
 
   if [[ -d "/etc/systemd/system/grafana-server.service.d" ]]; then
     run_cmd rmdir "/etc/systemd/system/grafana-server.service.d" 2>/dev/null || true
@@ -460,18 +466,28 @@ run_cmd usermod -aG adm,systemd-journal alloy || true
 run_cmd install -m 0640 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
 run_cmd chown root:alloy /etc/alloy/config.alloy
 
-echo "==> Configurando fuentes de datos de Grafana"
+echo "==> Configurando fuentes de datos y dashboards preconfigurados de Grafana"
 run_cmd install -d -m 0755 /etc/grafana/provisioning/datasources
 run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/datasources/datasources.yml" \
   /etc/grafana/provisioning/datasources/observability.yml
+
+run_cmd install -d -m 0755 /etc/grafana/provisioning/dashboards
+run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/dashboards/dashboards.yml" \
+  /etc/grafana/provisioning/dashboards/observability-dashboards.yml
+
+run_cmd install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
+run_cmd install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
+  /var/lib/grafana/dashboards/ubuntu-security-overview.json
+
 run_cmd install -d -m 0755 /etc/systemd/system/grafana-server.service.d
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN] Configurar /etc/systemd/system/grafana-server.service.d/observability.conf (puerto $GRAFANA_PORT)"
+  echo "[DRY-RUN] Configurar /etc/systemd/system/grafana-server.service.d/observability.conf (puerto $GRAFANA_PORT y Home Dashboard)"
 else
   cat > /etc/systemd/system/grafana-server.service.d/observability.conf <<EOF
 [Service]
 Environment="GF_SERVER_HTTP_ADDR=127.0.0.1"
 Environment="GF_SERVER_HTTP_PORT=$GRAFANA_PORT"
+Environment="GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/ubuntu-security-overview.json"
 EOF
 fi
 
