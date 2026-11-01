@@ -541,7 +541,9 @@ else
     loki -config.file=/etc/loki/config.yml -verify-config || true
   fi
   if command -v alloy >/dev/null 2>&1; then
-    alloy fmt --test /etc/alloy/config.alloy || true
+    # Auto-formatear con alloy fmt -w si hay diferencias de estilo
+    alloy fmt -w /etc/alloy/config.alloy >/dev/null 2>&1 || true
+    alloy fmt --test /etc/alloy/config.alloy >/dev/null 2>&1 || true
   fi
 fi
 
@@ -589,8 +591,15 @@ else
     GRAFANA_ADMIN_PASS="$(tr -dc 'a-zA-Z0-9!@#$%^&*' < /dev/urandom | head -c 20)"
   fi
 
-  if command -v grafana-cli >/dev/null 2>&1; then
-    if grafana-cli admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
+  # Intento con 'grafana cli' (moderno) y fallback a 'grafana-cli' con --homepath
+  local_homepath="/usr/share/grafana"
+  if command -v grafana >/dev/null 2>&1; then
+    if grafana cli ${local_homepath:+--homepath "$local_homepath"} admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
+      GRAFANA_PASS_SET=1
+    fi
+  fi
+  if [[ "$GRAFANA_PASS_SET" -eq 0 ]] && command -v grafana-cli >/dev/null 2>&1; then
+    if grafana-cli ${local_homepath:+--homepath "$local_homepath"} admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
       GRAFANA_PASS_SET=1
     fi
   fi
