@@ -233,17 +233,17 @@ else
 fi
 
 if [[ -f /etc/loki/config.yml ]]; then
-  loki_cfg_group="$(stat -c '%G' /etc/loki/config.yml 2>/dev/null || true)"
-  if [[ "$loki_cfg_group" == "loki" ]]; then
-    report_pass "Configuración /etc/loki/config.yml legible por grupo 'loki'"
+  if runuser -u loki -- test -r /etc/loki/config.yml 2>/dev/null; then
+    report_pass "Configuración /etc/loki/config.yml legible por usuario 'loki'"
   else
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "/etc/loki/config.yml no pertenece al grupo 'loki' (actual: $loki_cfg_group)"
+      report_fail "El usuario 'loki' NO puede leer /etc/loki/config.yml (su grupo primario suele ser nogroup)"
     else
-      chown root:loki /etc/loki/config.yml
+      chmod 0755 /etc/loki 2>/dev/null || true
+      chown loki:loki /etc/loki/config.yml
       chmod 0640 /etc/loki/config.yml
       NEED_LOKI_RESTART=1
-      report_fixed "Ajustados permisos de /etc/loki/config.yml (root:loki 0640)"
+      report_fixed "Ajustado propietario de /etc/loki/config.yml a loki:loki (0640) para lectura directa por el proceso"
     fi
   fi
 fi
@@ -252,7 +252,7 @@ fi
 if [[ ! -f /etc/alloy/config.alloy ]] && [[ -f "$SCRIPT_DIR/alloy/config.alloy" ]] && [[ "$CHECK_ONLY" -eq 0 ]]; then
   install -d -m 0755 /etc/alloy
   install -m 0640 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
-  chown root:alloy /etc/alloy/config.alloy
+  chown alloy:alloy /etc/alloy/config.alloy
   NEED_ALLOY_RESTART=1
   report_fixed "Restaurado /etc/alloy/config.alloy desde el repositorio"
 fi
@@ -267,10 +267,11 @@ if [[ -f /etc/alloy/config.alloy ]]; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
       report_fail "El usuario 'alloy' no puede leer /etc/alloy/config.alloy"
     else
-      chown root:alloy /etc/alloy/config.alloy
+      chmod 0755 /etc/alloy 2>/dev/null || true
+      chown alloy:alloy /etc/alloy/config.alloy
       chmod 0640 /etc/alloy/config.alloy
       NEED_ALLOY_RESTART=1
-      report_fixed "Ajustados permisos de /etc/alloy/config.alloy (root:alloy 0640)"
+      report_fixed "Ajustados permisos de /etc/alloy/config.alloy (alloy:alloy 0640)"
     fi
   fi
 fi
@@ -404,10 +405,12 @@ fi
 if [[ "$NEED_ALLOY_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   systemctl reset-failed alloy 2>/dev/null || true
   systemctl restart alloy || true
+  sleep 2
 fi
 if [[ "$NEED_GRAFANA_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   systemctl reset-failed grafana-server 2>/dev/null || true
   systemctl restart grafana-server || true
+  sleep 2
 fi
 
 for svc in alloy grafana-server crowdsec auditd; do
@@ -440,12 +443,37 @@ done
 echo
 echo -e "${C_BOLD}[4/5] Verificando aislamiento de sockets en loopback (127.0.0.1)...${C_RESET}"
 
-ss_out="$(ss -lntp 2>/dev/null || true)"
+# Verificar que el drop-in de Grafana tenga GF_SERVER_HTTP_ADDR=127.0.0.1
+GRAF_DROPIN="/etc/systemd/system/grafana-server.service.d/observability.conf"
+if [[ -f "$GRAF_DROPIN" ]] && ! grep -q "GF_SERVER_HTTP_ADDR=127.0.0.1" "$GRAF_DROPIN" 2>/dev/null; then
+  if [[ "$CHECK_ONLY" -eq 0 ]]; then
+    cat > "$GRAF_DROPIN" <<EOF
+[Service]
+Environment="GF_SERVER_HTTP_ADDR=127.0.0.1"
+Environment="GF_SERVER_HTTP_PORT=$GRAFANA_PORT"
+Environment="GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/ubuntu-security-overview.json"
+EOF
+    systemctl daemon-reload
+    systemctl restart grafana-server || true
+    sleep 2
+    report_fixed "Restaurado aislamiento GF_SERVER_HTTP_ADDR=127.0.0.1 en $GRAF_DROPIN"
+  fi
+fi
+
+# Esperar hasta 5s si algún socket está terminando de enlazar tras el reinicio
+for _ in {1..5}; do
+  ss_out="$(ss -lntp 2>/dev/null || true)"
+  if echo "$ss_out" | grep -qE ":3100\b" && echo "$ss_out" | grep -qE ":12345\b"; then
+    break
+  fi
+  sleep 1
+done
+
 for port_pair in "9090:Prometheus" "3100:Loki" "12345:Alloy" "${GRAFANA_PORT}:Grafana"; do
   p="${port_pair%%:*}"
   name="${port_pair#*:}"
-  if echo "$ss_out" | grep -qE "127\.0\.0\.1:${p}\b"; then
-    report_pass "$name escuchando de forma segura en 127.0.0.1:${p}"
+  if echo "$ss_out" | grep -qE "(127\.0\.0\.1|\[::1\]):${p}\b"; then
+    report_pass "$name escuchando de forma segura en loopback (:${p})"
   elif echo "$ss_out" | grep -qE ":${p}\b"; then
     report_warn "$name escucha en el puerto :${p} pero verifica que no esté expuesto en 0.0.0.0"
   else

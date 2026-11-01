@@ -458,8 +458,9 @@ fi
 
 run_cmd install -d -o loki -g loki -m 0750 /var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor
 run_cmd chown -R loki:loki /var/lib/loki
+run_cmd install -d -m 0755 /etc/loki
 run_cmd install -m 0640 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
-run_cmd chown root:loki /etc/loki/config.yml
+run_cmd chown loki:loki /etc/loki/config.yml
 
 echo "==> Configurando Alloy y permisos de lectura de logs"
 # Garantizar existencia del grupo y usuario alloy
@@ -471,8 +472,9 @@ if ! getent passwd alloy >/dev/null 2>&1; then
 fi
 run_cmd usermod -aG adm,systemd-journal alloy || true
 run_cmd install -d -o alloy -g alloy -m 0750 /var/lib/alloy
+run_cmd install -d -m 0755 /etc/alloy
 run_cmd install -m 0640 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
-run_cmd chown root:alloy /etc/alloy/config.alloy
+run_cmd chown alloy:alloy /etc/alloy/config.alloy
 
 # Reforzar grupos suplementarios en systemd para que alloy pueda leer /var/log/auth.log y journald
 run_cmd install -d -m 0755 /etc/systemd/system/alloy.service.d
