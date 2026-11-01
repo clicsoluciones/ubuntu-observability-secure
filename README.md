@@ -148,6 +148,21 @@ sudo ./setup_grafana.sh --reset-password
 sudo ./setup_grafana.sh --password 'TuNuevaPasswordSegura'
 ```
 
+### 8. Diagnóstico y Autorreparación (`doctor.sh`)
+Si algún servicio (`loki`, `alloy`, `prometheus`, `grafana-server`) presenta fallos de arranque tras una actualización o si el panel **"Logs de Autenticación SSH y Sudo (`/var/log/auth.log`)"** muestra `No data`, ejecuta la herramienta de diagnóstico y autorreparación:
+```bash
+chmod +x doctor.sh
+sudo ./doctor.sh
+
+# O en modo solo lectura (sin aplicar cambios):
+sudo ./doctor.sh --check-only
+```
+`doctor.sh` verifica y corrige automáticamente:
+- Propiedad recursiva `loki:loki` en `/var/lib/loki` (`chunks`, `rules`, `compactor`).
+- Grupos suplementarios de Alloy (`adm`, `systemd-journal`) mediante drop-in de systemd y permisos de lectura sobre `/var/log/auth.log`.
+- Reinicio ordenado (`systemctl reset-failed`) esperando a que Loki responda en `:3100/ready` antes de iniciar Alloy.
+- Verificación de ingesta real en Prometheus y Loki (`{job="ssh_auth"}`), reseteando el caché de posiciones de Alloy si leyó el archivo cuando Loki aún no estaba disponible.
+
 ---
 
 ## Acceso Seguro a los Paneles y Credenciales

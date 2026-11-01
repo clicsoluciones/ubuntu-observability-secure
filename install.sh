@@ -220,6 +220,7 @@ do_uninstall() {
   local files_to_remove=(
     "/etc/sysctl.d/99-observability-ddos.conf"
     "/etc/systemd/system/grafana-server.service.d/observability.conf"
+    "/etc/systemd/system/alloy.service.d/observability.conf"
     "/etc/grafana/provisioning/datasources/observability.yml"
     "/etc/grafana/provisioning/dashboards/observability-dashboards.yml"
     "/var/lib/grafana/dashboards/ubuntu-security-overview.json"
@@ -242,6 +243,9 @@ do_uninstall() {
 
   if [[ -d "/etc/systemd/system/grafana-server.service.d" ]]; then
     run_cmd rmdir "/etc/systemd/system/grafana-server.service.d" 2>/dev/null || true
+  fi
+  if [[ -d "/etc/systemd/system/alloy.service.d" ]]; then
+    run_cmd rmdir "/etc/systemd/system/alloy.service.d" 2>/dev/null || true
   fi
 
   echo "Recargando sysctl, auditd y systemd..."
@@ -450,7 +454,8 @@ if ! getent passwd loki >/dev/null 2>&1; then
   run_cmd useradd --system -g loki -d /var/lib/loki -s /usr/sbin/nologin loki || true
 fi
 
-run_cmd install -d -o loki -g loki -m 0750 /var/lib/loki
+run_cmd install -d -o loki -g loki -m 0750 /var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor
+run_cmd chown -R loki:loki /var/lib/loki
 run_cmd install -m 0640 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
 run_cmd chown root:loki /etc/loki/config.yml
 
@@ -463,8 +468,26 @@ if ! getent passwd alloy >/dev/null 2>&1; then
   run_cmd useradd --system -g alloy -d /var/lib/alloy -s /usr/sbin/nologin alloy || true
 fi
 run_cmd usermod -aG adm,systemd-journal alloy || true
+run_cmd install -d -o alloy -g alloy -m 0750 /var/lib/alloy
 run_cmd install -m 0640 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
 run_cmd chown root:alloy /etc/alloy/config.alloy
+
+# Reforzar grupos suplementarios en systemd para que alloy pueda leer /var/log/auth.log y journald
+run_cmd install -d -m 0755 /etc/systemd/system/alloy.service.d
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[DRY-RUN] Configurar /etc/systemd/system/alloy.service.d/observability.conf (SupplementaryGroups=adm systemd-journal)"
+else
+  cat > /etc/systemd/system/alloy.service.d/observability.conf <<'EOF'
+[Service]
+SupplementaryGroups=adm systemd-journal
+EOF
+fi
+for log_f in /var/log/auth.log /var/log/ufw.log; do
+  if [[ -f "$log_f" ]]; then
+    run_cmd chgrp adm "$log_f" 2>/dev/null || true
+    run_cmd chmod 0640 "$log_f" 2>/dev/null || true
+  fi
+done
 
 echo "==> Configurando fuentes de datos y dashboards preconfigurados de Grafana"
 run_cmd install -d -m 0755 /etc/grafana/provisioning/datasources
@@ -554,12 +577,15 @@ else
     promtool check rules /etc/prometheus/rules/host-alerts.yml || true
   fi
   if command -v loki >/dev/null 2>&1; then
-    loki -config.file=/etc/loki/config.yml -verify-config || true
+    runuser -u loki -- loki -config.file=/etc/loki/config.yml -verify-config || true
+    chown -R loki:loki /var/lib/loki 2>/dev/null || true
   fi
   if command -v alloy >/dev/null 2>&1; then
     # Auto-formatear con alloy fmt -w si hay diferencias de estilo
     alloy fmt -w /etc/alloy/config.alloy >/dev/null 2>&1 || true
     alloy fmt --test /etc/alloy/config.alloy >/dev/null 2>&1 || true
+    chown root:alloy /etc/alloy/config.alloy 2>/dev/null || true
+    chmod 0640 /etc/alloy/config.alloy 2>/dev/null || true
   fi
 fi
 
@@ -567,10 +593,25 @@ fi
 LOKI_SERVICE="$(get_loki_service_name)"
 echo "==> Unidad de servicio Loki detectada: ${LOKI_SERVICE}.service"
 
-echo "==> Habilitando y reiniciando servicios"
+echo "==> Habilitando y reiniciando servicios en orden (Prometheus/Loki -> Alloy -> Grafana)"
 run_cmd systemctl daemon-reload
-run_cmd systemctl enable --now prometheus "$LOKI_SERVICE" alloy grafana-server
-run_cmd systemctl restart prometheus "$LOKI_SERVICE" alloy grafana-server
+run_cmd systemctl reset-failed prometheus "$LOKI_SERVICE" alloy grafana-server 2>/dev/null || true
+run_cmd systemctl enable --now prometheus "$LOKI_SERVICE"
+run_cmd systemctl restart prometheus "$LOKI_SERVICE"
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  echo -n "  Esperando a que Loki esté listo en 127.0.0.1:3100... "
+  for _ in {1..15}; do
+    if curl -fsSL "http://127.0.0.1:3100/ready" >/dev/null 2>&1; then
+      echo "[OK]"
+      break
+    fi
+    sleep 1
+  done
+fi
+
+run_cmd systemctl enable --now alloy grafana-server
+run_cmd systemctl restart alloy grafana-server
 run_cmd systemctl restart auditd || true
 
 echo
