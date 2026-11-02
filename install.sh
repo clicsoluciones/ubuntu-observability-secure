@@ -10,7 +10,7 @@ BACKUP_DIR="/var/backups/observability-$(date +%Y%m%d-%H%M%S)"
 
 # Configuration & flags (CLI flags override environment variables)
 INSTALL_CROWDSEC="${INSTALL_CROWDSEC:-1}"
-INSTALL_BOUNCER="${INSTALL_BOUNCER:-0}"
+INSTALL_BOUNCER="${INSTALL_BOUNCER:-1}"
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 DRY_RUN=0
 SKIP_PREFLIGHT=0
@@ -28,7 +28,7 @@ Opciones:
   --dry-run                 Muestra los pasos y comandos sin realizar cambios en el sistema.
   --skip-preflight          Omite las advertencias y verificaciones previas (RAM, disco, red).
   --no-crowdsec             Deshabilita la instalación y configuración de CrowdSec.
-  --with-bouncer            Instala y activa el bouncer nftables de CrowdSec (remediation).
+  --without-bouncer         Omite la instalación del bouncer firewall (deja CrowdSec en modo solo detección).
   --rollback <DIRECTORIO>   Restaura configuraciones y sysctl desde un backup previo y recarga servicios.
   --uninstall               Detiene y deshabilita los servicios de observabilidad, y retira configs creadas.
   -h, --help                Muestra esta ayuda y termina.
@@ -36,13 +36,13 @@ Opciones:
 Variables de entorno compatibles:
   GRAFANA_PORT=<1-65535>    (por defecto: 3000)
   INSTALL_CROWDSEC=0|1      (por defecto: 1)
-  INSTALL_BOUNCER=0|1       (por defecto: 0)
+  INSTALL_BOUNCER=0|1       (por defecto: 1 - bloqueo activo en firewall)
 
 Ejemplos:
   sudo ./install.sh
   sudo ./install.sh --port 3001
   sudo ./install.sh --dry-run
-  sudo ./install.sh --with-bouncer
+  sudo ./install.sh --without-bouncer
   sudo ./install.sh --rollback /var/backups/observability-20261101-120000
   sudo ./install.sh --uninstall
 EOF
@@ -73,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --with-bouncer)
       INSTALL_BOUNCER=1
+      shift
+      ;;
+    --without-bouncer)
+      INSTALL_BOUNCER=0
       shift
       ;;
     --rollback)
@@ -575,11 +579,11 @@ if [[ "$INSTALL_CROWDSEC" == "1" ]]; then
   run_cmd systemctl reload crowdsec || true
 
   if [[ "$INSTALL_BOUNCER" == "1" ]]; then
-    echo "==> Instalando bouncer nftables solicitado (--with-bouncer o INSTALL_BOUNCER=1)"
+    echo "==> Instalando bouncer nftables de CrowdSec (bloqueo activo en kernel/firewall)"
     apt_cmd install -y crowdsec-firewall-bouncer-nftables
     run_cmd systemctl enable --now crowdsec-firewall-bouncer
   else
-    echo "AVISO: CrowdSec queda en modo detección. No bloquea IPs hasta instalar/configurar un remediation component (usa --with-bouncer si lo requieres)."
+    echo "AVISO: CrowdSec queda en modo detección (--without-bouncer). No bloquea IPs en firewall."
   fi
 else
   echo "CrowdSec omitido (--no-crowdsec o INSTALL_CROWDSEC=0)"

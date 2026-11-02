@@ -466,7 +466,7 @@ if [[ "$NEED_GRAFANA_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   sleep 1
 fi
 
-for svc in alloy grafana-server crowdsec; do
+for svc in alloy grafana-server crowdsec crowdsec-firewall-bouncer; do
   if ! systemctl list-unit-files "${svc}.service" >/dev/null 2>&1; then
     report_warn "Servicio opcional '$svc' no está instalado en este sistema"
     continue
