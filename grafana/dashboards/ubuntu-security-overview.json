@@ -2151,7 +2151,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"ssh_auth\"}",
+          "expr": "{job=\"ssh_auth\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2188,7 +2188,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"docker_containers\"}",
+          "expr": "{job=\"docker_containers\", container=~\"\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2225,7 +2225,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=~\"ufw_firewall|crowdsec_ips|nginx_error\"}",
+          "expr": "{job=~\"ufw_firewall|crowdsec_ips|nginx_error\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2262,7 +2262,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=~\"nginx_access|systemd_journal\"}",
+          "expr": "{job=~\"nginx_access|systemd_journal\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2284,7 +2284,46 @@
     "docker"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "log_filter",
+        "type": "textbox",
+        "label": "Filtrar Texto en Logs",
+        "query": "",
+        "current": {
+          "selected": false,
+          "value": "",
+          "text": ""
+        },
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "container",
+        "type": "query",
+        "label": "Contenedor Docker",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "definition": "label_values({job=\"docker_containers\"}, container)",
+        "query": "label_values({job=\"docker_containers\"}, container)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "value": [
+            ""
+          ],
+          "text": "All"
+        },
+        "refresh": 2,
+        "hide": 0,
+        "sort": 1,
+        "skipUrlSync": false
+      }
+    ]
   },
   "time": {
     "from": "now-1h",
