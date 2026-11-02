@@ -585,6 +585,17 @@ if [[ "$INSTALL_CROWDSEC" == "1" ]]; then
   else
     echo "AVISO: CrowdSec queda en modo detección (--without-bouncer). No bloquea IPs en firewall."
   fi
+
+  echo "==> Aprovisionando exportador cron de decisiones activas de CrowdSec (IP + País)"
+  install -d -m 0755 /usr/local/bin /var/lib/alloy/textfile
+  install -m 0755 "$SCRIPT_DIR/scripts/export_crowdsec_decisions.sh" /usr/local/bin/export_crowdsec_decisions.sh
+  # Ejecutar una vez inicialmente
+  /usr/local/bin/export_crowdsec_decisions.sh || true
+  # Configurar entrada cron cada minuto
+  cat > /etc/cron.d/crowdsec-decisions-exporter <<'CRON'
+* * * * * root /usr/local/bin/export_crowdsec_decisions.sh >/dev/null 2>&1
+CRON
+  chmod 0644 /etc/cron.d/crowdsec-decisions-exporter
 else
   echo "CrowdSec omitido (--no-crowdsec o INSTALL_CROWDSEC=0)"
 fi

@@ -1911,16 +1911,60 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Value"
+              "options": "ip"
             },
             "properties": [
               {
-                "id": "custom.width",
-                "value": 90
+                "id": "displayName",
+                "value": "IP Atacante"
               },
               {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "country"
+            },
+            "properties": [
+              {
                 "id": "displayName",
-                "value": "Estado"
+                "value": "Pa\u00eds (Country)"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "as_name"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Proveedor / ISP (ASN)"
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Ataque / Escenario"
               }
             ]
           },
@@ -1933,30 +1977,10 @@
               {
                 "id": "displayName",
                 "value": "Acci\u00f3n IPS"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "reason"
-            },
-            "properties": [
+              },
               {
-                "id": "displayName",
-                "value": "Motivo / Ataque Detectado"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "origin"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Origen de Regla"
+                "id": "custom.width",
+                "value": 90
               }
             ]
           }
@@ -1990,7 +2014,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "cs_active_decisions > 0",
+          "expr": "crowdsec_active_decision == 1",
           "format": "table",
           "instant": true,
           "range": false,
@@ -2006,9 +2030,17 @@
               "Time": true,
               "__name__": true,
               "instance": true,
-              "job": true
+              "job": true,
+              "origin": true,
+              "Value": true
             },
-            "indexByName": {},
+            "indexByName": {
+              "ip": 0,
+              "country": 1,
+              "as_name": 2,
+              "reason": 3,
+              "action": 4
+            },
             "renameByName": {}
           }
         }

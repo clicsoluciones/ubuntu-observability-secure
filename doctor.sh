@@ -272,17 +272,18 @@ if [[ -f /etc/loki/config.yml ]]; then
   fi
 fi
 
-# Alloy config & data directory permissions (sincronizar con repo si falta soporte Docker, CrowdSec o glob de Nginx)
+# Alloy config & data directory permissions (sincronizar con repo si falta soporte Docker, CrowdSec o textfile)
 if [[ -f "$SCRIPT_DIR/alloy/config.alloy" ]]; then
-  if [[ ! -f /etc/alloy/config.alloy ]] || ! grep -q 'crowdsec_metrics' /etc/alloy/config.alloy 2>/dev/null; then
+  if [[ ! -f /etc/alloy/config.alloy ]] || ! grep -q 'textfile' /etc/alloy/config.alloy 2>/dev/null; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "/etc/alloy/config.alloy no existe o no incluye la recolección de CrowdSec / Docker"
+      report_fail "/etc/alloy/config.alloy no existe o no incluye el recolector textfile de CrowdSec"
     else
-      install -d -m 0755 /etc/alloy
+      install -d -m 0755 /etc/alloy /var/lib/alloy/textfile
       install -m 0644 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
+      chown -R alloy:alloy /var/lib/alloy/textfile
       chown alloy:alloy /etc/alloy/config.alloy
       NEED_ALLOY_RESTART=1
-      report_fixed "Actualizado /etc/alloy/config.alloy con scrape de CrowdSec (:6060), Docker y Nginx"
+      report_fixed "Actualizado /etc/alloy/config.alloy con recolector textfile para métricas de IP y País"
     fi
   fi
 fi
@@ -305,6 +306,22 @@ if [[ -f /etc/alloy/config.alloy ]]; then
       NEED_ALLOY_RESTART=1
       report_fixed "Ajustados permisos de /etc/alloy/config.alloy (alloy:alloy 0644)"
     fi
+  fi
+fi
+
+# Verificar y sincronizar exportador de decisiones activas de CrowdSec (IP + País)
+if command -v cscli >/dev/null 2>&1 && [[ -f "$SCRIPT_DIR/scripts/export_crowdsec_decisions.sh" ]]; then
+  install -d -m 0755 /usr/local/bin /var/lib/alloy/textfile
+  install -m 0755 "$SCRIPT_DIR/scripts/export_crowdsec_decisions.sh" /usr/local/bin/export_crowdsec_decisions.sh
+  /usr/local/bin/export_crowdsec_decisions.sh >/dev/null 2>&1 || true
+  if [[ ! -f /etc/cron.d/crowdsec-decisions-exporter ]]; then
+    cat > /etc/cron.d/crowdsec-decisions-exporter <<'CRON'
+* * * * * root /usr/local/bin/export_crowdsec_decisions.sh >/dev/null 2>&1
+CRON
+    chmod 0644 /etc/cron.d/crowdsec-decisions-exporter
+    report_fixed "Configurado cronjob /etc/cron.d/crowdsec-decisions-exporter para alimentar IP y País a Grafana"
+  else
+    report_pass "Exportador cron de CrowdSec (IP + País) configurado y activo"
   fi
 fi
 

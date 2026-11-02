@@ -1,6 +1,10 @@
 // Host metrics -> Prometheus remote_write
 prometheus.exporter.unix "host_ubuntu" {
-	enable_collectors = ["meminfo", "netstat", "conntrack", "softnet", "systemd", "processes"]
+	enable_collectors = ["meminfo", "netstat", "conntrack", "softnet", "systemd", "processes", "textfile"]
+
+	textfile {
+		directory = "/var/lib/alloy/textfile"
+	}
 
 	filesystem {
 		fs_types_exclude = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|tmpfs|overlay|proc|sysfs|tracefs)$"
