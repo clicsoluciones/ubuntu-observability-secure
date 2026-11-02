@@ -24,10 +24,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 1,
-        "w": 24,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 24,
+        "h": 1
       },
       "id": 1,
       "panels": [],
@@ -70,10 +70,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 6,
         "x": 0,
-        "y": 1
+        "y": 1,
+        "w": 6,
+        "h": 5
       },
       "id": 2,
       "options": {
@@ -144,10 +144,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 6,
         "x": 6,
-        "y": 1
+        "y": 1,
+        "w": 6,
+        "h": 5
       },
       "id": 3,
       "options": {
@@ -218,10 +218,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 6,
         "x": 12,
-        "y": 1
+        "y": 1,
+        "w": 6,
+        "h": 5
       },
       "id": 4,
       "options": {
@@ -253,7 +253,7 @@
           "refId": "A"
         }
       ],
-      "title": "[3] Almacenamiento Raíz Usado % (Umbral >85%)",
+      "title": "[3] Almacenamiento Ra\u00edz Usado % (Umbral >85%)",
       "type": "gauge"
     },
     {
@@ -293,10 +293,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 6,
         "x": 18,
-        "y": 1
+        "y": 1,
+        "w": 6,
+        "h": 5
       },
       "id": 5,
       "options": {
@@ -347,7 +347,7 @@
                 "0": {
                   "color": "red",
                   "index": 1,
-                  "text": "CAÍDO"
+                  "text": "CA\u00cdDO"
                 },
                 "1": {
                   "color": "green",
@@ -375,10 +375,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
         "x": 0,
-        "y": 6
+        "y": 6,
+        "w": 12,
+        "h": 7
       },
       "id": 6,
       "options": {
@@ -411,7 +411,7 @@
           "refId": "A"
         }
       ],
-      "title": "[5] Estado Servicios Críticos systemd (ACTIVO / CAÍDO)",
+      "title": "[5] Estado Servicios Cr\u00edticos systemd (ACTIVO / CA\u00cdDO)",
       "type": "stat"
     },
     {
@@ -473,10 +473,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
         "x": 12,
-        "y": 6
+        "y": 6,
+        "w": 12,
+        "h": 7
       },
       "id": 7,
       "options": {
@@ -590,10 +590,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
         "x": 0,
-        "y": 13
+        "y": 13,
+        "w": 12,
+        "h": 7
       },
       "id": 50,
       "options": {
@@ -684,10 +684,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
         "x": 12,
-        "y": 13
+        "y": 13,
+        "w": 12,
+        "h": 7
       },
       "id": 51,
       "options": {
@@ -724,10 +724,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 1,
-        "w": 24,
         "x": 0,
-        "y": 13
+        "y": 20,
+        "w": 24,
+        "h": 1
       },
       "id": 8,
       "panels": [],
@@ -769,10 +769,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 0,
-        "y": 14
+        "y": 21,
+        "w": 4,
+        "h": 4
       },
       "id": 9,
       "options": {
@@ -838,10 +838,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 4,
-        "y": 14
+        "y": 21,
+        "w": 4,
+        "h": 4
       },
       "id": 10,
       "options": {
@@ -911,10 +911,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 8,
-        "y": 14
+        "y": 21,
+        "w": 4,
+        "h": 4
       },
       "id": 11,
       "options": {
@@ -980,10 +980,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 12,
-        "y": 14
+        "y": 21,
+        "w": 4,
+        "h": 4
       },
       "id": 12,
       "options": {
@@ -1054,10 +1054,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 16,
-        "y": 14
+        "y": 21,
+        "w": 4,
+        "h": 4
       },
       "id": 13,
       "options": {
@@ -1090,7 +1090,7 @@
           "refId": "A"
         }
       ],
-      "title": "[10] DDoS L4: Ratio Asimetría TCP",
+      "title": "[10] DDoS L4: Ratio Asimetr\u00eda TCP",
       "type": "stat"
     },
     {
@@ -1130,10 +1130,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 20,
-        "y": 14
+        "y": 21,
+        "w": 4,
+        "h": 4
       },
       "id": 14,
       "options": {
@@ -1204,10 +1204,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 5,
         "x": 0,
-        "y": 18
+        "y": 25,
+        "w": 5,
+        "h": 4
       },
       "id": 15,
       "options": {
@@ -1239,7 +1239,7 @@
           "refId": "A"
         }
       ],
-      "title": "[12] DDoS L7: Tráfico HTTP (req/s)",
+      "title": "[12] DDoS L7: Tr\u00e1fico HTTP (req/s)",
       "type": "stat"
     },
     {
@@ -1277,10 +1277,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 5,
         "x": 5,
-        "y": 18
+        "y": 25,
+        "w": 5,
+        "h": 4
       },
       "id": 16,
       "options": {
@@ -1312,7 +1312,7 @@
           "refId": "A"
         }
       ],
-      "title": "[13] Bot Scan: Ráfaga 403/404 (/min)",
+      "title": "[13] Bot Scan: R\u00e1faga 403/404 (/min)",
       "type": "stat"
     },
     {
@@ -1350,10 +1350,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 5,
         "x": 10,
-        "y": 18
+        "y": 25,
+        "w": 5,
+        "h": 4
       },
       "id": 17,
       "options": {
@@ -1385,7 +1385,7 @@
           "refId": "A"
         }
       ],
-      "title": "[14] Bot Scan: Rutas Críticas (.env/.git 5m)",
+      "title": "[14] Bot Scan: Rutas Cr\u00edticas (.env/.git 5m)",
       "type": "stat"
     },
     {
@@ -1419,10 +1419,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 5,
         "x": 15,
-        "y": 18
+        "y": 25,
+        "w": 5,
+        "h": 4
       },
       "id": 18,
       "options": {
@@ -1454,7 +1454,7 @@
           "refId": "A"
         }
       ],
-      "title": "[15] Bot Scan: Escáneres (sqlmap/nikto 5m)",
+      "title": "[15] Bot Scan: Esc\u00e1neres (sqlmap/nikto 5m)",
       "type": "stat"
     },
     {
@@ -1492,10 +1492,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 20,
-        "y": 18
+        "y": 25,
+        "w": 4,
+        "h": 4
       },
       "id": 19,
       "options": {
@@ -1537,10 +1537,10 @@
         "uid": "-- Grafana --"
       },
       "gridPos": {
-        "h": 9,
-        "w": 16,
         "x": 0,
-        "y": 22
+        "y": 29,
+        "w": 16,
+        "h": 9
       },
       "id": 21,
       "options": {
@@ -1600,12 +1600,12 @@
           },
           "editorMode": "code",
           "expr": "rate(node_netstat_Tcp_InSegs[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs[2m]), 1)",
-          "legendFormat": "Ratio Asimetría In/Out",
+          "legendFormat": "Ratio Asimetr\u00eda In/Out",
           "range": true,
           "refId": "D"
         }
       ],
-      "title": "Radar Principal DDoS L4: Segmentos TCP In/Out, Ratio Asimetría y SYN Cookies (Detección de Inundación)",
+      "title": "Radar Principal DDoS L4: Segmentos TCP In/Out, Ratio Asimetr\u00eda y SYN Cookies (Detecci\u00f3n de Inundaci\u00f3n)",
       "type": "timeseries"
     },
     {
@@ -1614,10 +1614,10 @@
         "uid": "-- Grafana --"
       },
       "gridPos": {
-        "h": 9,
-        "w": 8,
         "x": 16,
-        "y": 22
+        "y": 29,
+        "w": 8,
+        "h": 9
       },
       "id": 20,
       "options": {
@@ -1700,10 +1700,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 22
+        "x": 0,
+        "y": 38,
+        "w": 24,
+        "h": 7
       },
       "id": 22,
       "options": {
@@ -1741,7 +1741,7 @@
           },
           "editorMode": "code",
           "expr": "(sum(rate({job=\"nginx_access\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
-          "legendFormat": "Ráfagas 403/404 (/min)",
+          "legendFormat": "R\u00e1fagas 403/404 (/min)",
           "queryType": "range",
           "refId": "B"
         },
@@ -1752,7 +1752,7 @@
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
-          "legendFormat": "Rutas Críticas .env/.git (5m)",
+          "legendFormat": "Rutas Cr\u00edticas .env/.git (5m)",
           "queryType": "range",
           "refId": "C"
         },
@@ -1763,21 +1763,21 @@
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
-          "legendFormat": "Escáneres sqlmap/nikto (5m)",
+          "legendFormat": "Esc\u00e1neres sqlmap/nikto (5m)",
           "queryType": "range",
           "refId": "D"
         }
       ],
-      "title": "Serie Temporal DDoS L7 & Bot Scan: HTTP/s, 403/404, .env/.git y Escáneres",
+      "title": "Serie Temporal DDoS L7 & Bot Scan: HTTP/s, 403/404, .env/.git y Esc\u00e1neres",
       "type": "timeseries"
     },
     {
       "collapsed": false,
       "gridPos": {
-        "h": 1,
-        "w": 24,
         "x": 0,
-        "y": 30
+        "y": 45,
+        "w": 24,
+        "h": 1
       },
       "id": 23,
       "panels": [],
@@ -1841,10 +1841,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 24,
         "x": 0,
-        "y": 31
+        "y": 46,
+        "w": 24,
+        "h": 7
       },
       "id": 24,
       "options": {
@@ -1884,10 +1884,10 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 9,
-        "w": 12,
         "x": 0,
-        "y": 38
+        "y": 53,
+        "w": 12,
+        "h": 9
       },
       "id": 25,
       "options": {
@@ -1912,7 +1912,7 @@
           "refId": "A"
         }
       ],
-      "title": "Logs de Autenticación SSH y Sudo (/var/log/auth.log)",
+      "title": "Logs de Autenticaci\u00f3n SSH y Sudo (/var/log/auth.log)",
       "type": "logs"
     },
     {
@@ -1921,10 +1921,10 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 9,
-        "w": 12,
         "x": 12,
-        "y": 38
+        "y": 53,
+        "w": 12,
+        "h": 9
       },
       "id": 26,
       "options": {
@@ -1958,10 +1958,10 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 9,
-        "w": 12,
         "x": 0,
-        "y": 47
+        "y": 62,
+        "w": 12,
+        "h": 9
       },
       "id": 27,
       "options": {
@@ -1995,10 +1995,10 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 9,
-        "w": 12,
         "x": 12,
-        "y": 47
+        "y": 62,
+        "w": 12,
+        "h": 9
       },
       "id": 28,
       "options": {
