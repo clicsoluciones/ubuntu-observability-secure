@@ -227,12 +227,19 @@ if [[ -d /var/lib/loki ]]; then
   fi
 fi
 
-if [[ ! -f /etc/loki/config.yml ]] && [[ -f "$SCRIPT_DIR/loki/config.yml" ]] && [[ "$CHECK_ONLY" -eq 0 ]]; then
-  install -d -m 0755 /etc/loki
-  install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
-  chown loki:loki /etc/loki/config.yml
-  NEED_LOKI_RESTART=1
-  report_fixed "Restaurado /etc/loki/config.yml desde el repositorio"
+# Sincronizar /etc/loki/config.yml con el repositorio si falta o si no tiene instance_addr configurado
+if [[ -f "$SCRIPT_DIR/loki/config.yml" ]]; then
+  if [[ ! -f /etc/loki/config.yml ]] || ! grep -q 'instance_addr' /etc/loki/config.yml 2>/dev/null; then
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_fail "/etc/loki/config.yml no existe o le falta 'instance_addr: 127.0.0.1' (provoca error 500 al recibir logs)"
+    else
+      install -d -m 0755 /etc/loki
+      install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
+      chown loki:loki /etc/loki/config.yml
+      NEED_LOKI_RESTART=1
+      report_fixed "Actualizado /etc/loki/config.yml con 'instance_addr: 127.0.0.1' para gRPC interno en loopback"
+    fi
+  fi
 fi
 
 if [[ "$loki_perm_issue" -eq 0 ]]; then
