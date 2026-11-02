@@ -1773,9 +1773,116 @@
     },
     {
       "collapsed": false,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "id": 52,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by(reason) (cs_active_decisions)",
+          "legendFormat": "IPs Baneadas Activas: {{reason}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by(scenario) (rate(cs_alerts[5m]) * 60)",
+          "legendFormat": "Alertas/min: {{scenario}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "IPS CrowdSec: Alertas de Ataques por Escenario y Decisiones de Bloqueo",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 45,
+        "y": 53,
         "w": 24,
         "h": 1
       },
@@ -1842,7 +1949,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 46,
+        "y": 54,
         "w": 24,
         "h": 7
       },
@@ -1885,7 +1992,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 61,
         "w": 12,
         "h": 9
       },
@@ -1922,7 +2029,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 53,
+        "y": 61,
         "w": 12,
         "h": 9
       },
@@ -1959,7 +2066,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 62,
+        "y": 70,
         "w": 12,
         "h": 9
       },
@@ -1981,12 +2088,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=~\"ufw_firewall|nginx_error\"}",
+          "expr": "{job=~\"ufw_firewall|crowdsec_ips|nginx_error\"}",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "Logs de Firewall UFW y Errores de Nginx (/var/log/ufw.log, *error*.log)",
+      "title": "Logs de Firewall UFW, IPS CrowdSec y Nginx (*error*.log, ufw.log, crowdsec.log)",
       "type": "logs"
     },
     {
@@ -1996,7 +2103,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 62,
+        "y": 70,
         "w": 12,
         "h": 9
       },

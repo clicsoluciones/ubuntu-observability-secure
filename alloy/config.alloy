@@ -65,18 +65,28 @@ prometheus.scrape "host_metrics" {
 	forward_to      = [prometheus.remote_write.local_prom.receiver]
 }
 
+// Scrape CrowdSec Prometheus metrics endpoint on loopback port 6060
+prometheus.scrape "crowdsec_metrics" {
+	scrape_interval = "15s"
+	targets = [
+		{"__address__" = "127.0.0.1:6060", "job" = "crowdsec", "instance" = constants.hostname},
+	]
+	forward_to = [prometheus.remote_write.local_prom.receiver]
+}
+
 prometheus.remote_write "local_prom" {
 	endpoint {
 		url = "http://127.0.0.1:9090/api/v1/write"
 	}
 }
 
-// Read Ubuntu auth, UFW, and all Nginx virtual host access/error logs.
+// Read Ubuntu auth, UFW, CrowdSec, and all Nginx virtual host access/error logs.
 // Missing files or patterns are simply not tailed until created.
 local.file_match "security_and_web_logs" {
 	path_targets = [
 		{__path__ = "/var/log/auth.log", job = "ssh_auth", host = constants.hostname},
 		{__path__ = "/var/log/ufw.log", job = "ufw_firewall", host = constants.hostname},
+		{__path__ = "/var/log/crowdsec.log", job = "crowdsec_ips", host = constants.hostname},
 		{__path__ = "/var/log/nginx/*access*.log", job = "nginx_access", host = constants.hostname},
 		{__path__ = "/var/log/nginx/*error*.log", job = "nginx_error", host = constants.hostname},
 	]

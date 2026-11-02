@@ -272,17 +272,17 @@ if [[ -f /etc/loki/config.yml ]]; then
   fi
 fi
 
-# Alloy config & data directory permissions (sincronizar con repo si falta soporte Docker o glob de Nginx)
+# Alloy config & data directory permissions (sincronizar con repo si falta soporte Docker, CrowdSec o glob de Nginx)
 if [[ -f "$SCRIPT_DIR/alloy/config.alloy" ]]; then
-  if [[ ! -f /etc/alloy/config.alloy ]] || ! grep -q 'docker_containers' /etc/alloy/config.alloy 2>/dev/null; then
+  if [[ ! -f /etc/alloy/config.alloy ]] || ! grep -q 'crowdsec_metrics' /etc/alloy/config.alloy 2>/dev/null; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "/etc/alloy/config.alloy no existe o no incluye la colección de contenedores Docker y vhosts Nginx"
+      report_fail "/etc/alloy/config.alloy no existe o no incluye la recolección de CrowdSec / Docker"
     else
       install -d -m 0755 /etc/alloy
       install -m 0644 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
       chown alloy:alloy /etc/alloy/config.alloy
       NEED_ALLOY_RESTART=1
-      report_fixed "Actualizado /etc/alloy/config.alloy con recolección de logs Docker (stdout/stderr) y globs de Nginx"
+      report_fixed "Actualizado /etc/alloy/config.alloy con scrape de CrowdSec (:6060), Docker y Nginx"
     fi
   fi
 fi
