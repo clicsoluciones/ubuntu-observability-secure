@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ubuntu 22.04/24.04 - Grafana + Prometheus + Loki + Alloy + auditd + CrowdSec
+# Ubuntu 20.04/22.04/24.04 - Grafana + Prometheus + Loki + Alloy + auditd + CrowdSec
 # Safe-by-default: loopback binding, no SSH/UFW disruption, safe backup before changes.
 set -Eeuo pipefail
 umask 027
@@ -21,7 +21,7 @@ show_help() {
   cat <<'EOF'
 Uso: sudo ./install.sh [OPCIONES]
 
-Instalador seguro de Observabilidad y Seguridad Activa en Ubuntu (22.04 / 24.04).
+Instalador seguro de Observabilidad y Seguridad Activa en Ubuntu (20.04 / 22.04 / 24.04).
 
 Opciones:
   --port <PUERTO>           Puerto HTTP para Grafana (por defecto: 3000).
@@ -287,8 +287,8 @@ run_preflight() {
     # shellcheck source=/dev/null
     . /etc/os-release
   fi
-  if [[ "${ID:-}" != "ubuntu" || ! "${VERSION_ID:-}" =~ ^(22\.04|24\.04)$ ]]; then
-    echo "ERROR: Este instalador está certificado únicamente para Ubuntu 22.04 o 24.04 LTS." >&2
+  if [[ "${ID:-}" != "ubuntu" || ! "${VERSION_ID:-}" =~ ^(20\.04|22\.04|24\.04)$ ]]; then
+    echo "ERROR: Este instalador está certificado únicamente para Ubuntu 20.04, 22.04 o 24.04 LTS." >&2
     echo "       Sistema detectado: ${PRETTY_NAME:-desconocido}" >&2
     if [[ "$SKIP_PREFLIGHT" -eq 0 ]]; then
       exit 1
