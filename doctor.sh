@@ -113,7 +113,11 @@ report_fail() {
 }
 
 get_loki_service_name() {
-  if systemctl list-unit-files loki-server.service >/dev/null 2>&1; then
+  if systemctl list-unit-files --type=service 2>/dev/null | grep -qE '^loki-server\.service'; then
+    echo "loki-server"
+  elif systemctl list-unit-files --type=service 2>/dev/null | grep -qE '^loki\.service'; then
+    echo "loki"
+  elif [[ -f /lib/systemd/system/loki-server.service || -f /etc/systemd/system/loki-server.service ]]; then
     echo "loki-server"
   else
     echo "loki"
