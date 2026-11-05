@@ -676,7 +676,10 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   GRAFANA_ADMIN_PASS="[GENERADA_ALEATORIAMENTE_EN_EJECUCION_REAL]"
 else
   # Generar contraseña alfanumérica segura sin símbolos conflictivos con expansiones de shell
-  GRAFANA_ADMIN_PASS="$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)"
+  GRAFANA_ADMIN_PASS="$(python3 -c 'import secrets, string; alphabet = string.ascii_letters + string.digits; print("".join(secrets.choice(alphabet) for _ in range(24)))' 2>/dev/null || true)"
+  if [[ -z "$GRAFANA_ADMIN_PASS" ]]; then
+    GRAFANA_ADMIN_PASS="AdminSec$(date +%s%N | head -c 16)"
+  fi
 
   # Limpiar posible base de datos huérfana creada en /usr/share/grafana/data por ejecuciones sin paths.data
   rm -rf /usr/share/grafana/data 2>/dev/null || true
