@@ -605,6 +605,24 @@ if [[ "$INSTALL_CROWDSEC" == "1" ]]; then
   fi
   run_cmd cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx \
     crowdsecurity/base-http-scenarios crowdsecurity/http-cve || true
+
+  # Configurar whitelist automática de loopback e IPs privadas para evitar autobloqueos
+  echo "==> Configurando whitelist de seguridad en CrowdSec (/etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml)"
+  install -d -m 0755 /etc/crowdsec/parsers/s02-enrich
+  cat > /etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml <<'EOF'
+name: default/infra_whitelists
+description: "Whitelist automatica de loopback y rangos privados para prevenir autobloqueo de servicios internos"
+whitelist:
+  reason: "Servicios locales e interfaces internas"
+  ip:
+    - "127.0.0.1"
+    - "::1"
+  cidr:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+EOF
+
   run_cmd systemctl enable --now crowdsec
   run_cmd systemctl reload crowdsec || true
 
