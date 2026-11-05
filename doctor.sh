@@ -231,14 +231,34 @@ if [[ -d /var/lib/loki ]]; then
   fi
 fi
 
-# Verificar y corregir configuración de argumentos de Prometheus (/etc/default/prometheus)
-if [[ -f /etc/default/prometheus ]] && grep -q 'unknown long flag.*web.enable-remote-write-receiver' <(journalctl -u prometheus -n 15 2>/dev/null || true); then
-  if [[ "$CHECK_ONLY" -eq 1 ]]; then
-    report_fail "Prometheus está fallando debido a sintaxis antigua de flags (--enable-feature=remote-write-receiver requerido en Ubuntu 20.04)"
-  else
-    sed -i 's/--web\.enable-remote-write-receiver/--enable-feature=remote-write-receiver/g' /etc/default/prometheus
+# Verificar y asegurar Prometheus moderno (>= 2.33) con soporte para remote write receiver
+if command -v prometheus >/dev/null 2>&1; then
+  if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_fail "El binario de Prometheus es demasiado antiguo (<2.33) y no soporta remote write receiver"
+    else
+      report_fixed "Actualizando Prometheus a v2.55.1 oficial para compatibilidad con remote write receiver..."
+      PROM_VER="2.55.1"
+      ARCH="amd64"
+      if [[ "$(uname -m)" =~ (aarch64|arm64) ]]; then
+        ARCH="arm64"
+      fi
+      TMP_PROM="/tmp/prometheus-${PROM_VER}.linux-${ARCH}"
+      curl -fsSL --connect-timeout 10 --max-time 60 "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-${ARCH}.tar.gz" | tar -xz -C /tmp
+      if [[ -f "${TMP_PROM}/prometheus" ]]; then
+        install -m 0755 "${TMP_PROM}/prometheus" /usr/bin/prometheus
+        install -m 0755 "${TMP_PROM}/promtool" /usr/bin/promtool
+        rm -rf "${TMP_PROM}"
+        NEED_PROM_RESTART=1
+      fi
+    fi
+  fi
+fi
+
+if [[ -f /etc/default/prometheus ]] && grep -q 'enable-feature=remote-write-receiver' /etc/default/prometheus; then
+  if [[ "$CHECK_ONLY" -eq 0 ]]; then
+    sed -i 's/--enable-feature=remote-write-receiver/--web.enable-remote-write-receiver/g' /etc/default/prometheus
     NEED_PROM_RESTART=1
-    report_fixed "Corregido flag de remote-write-receiver para la versión de Prometheus de Ubuntu 20.04"
   fi
 fi
 

@@ -440,25 +440,36 @@ run_cmd modprobe nf_conntrack || true
 run_cmd sysctl --system
 
 echo "==> Configurando Prometheus solo en loopback"
+# Asegurar instalación de Prometheus moderno con soporte de remote-write-receiver (Prometheus >= 2.33)
+# En Ubuntu 20.04, el paquete APT provee Prometheus 2.15 (demasiado antiguo para remote-write-receiver).
+# Si el binario es < 2.33, descargamos el binario oficial de Prometheus para mantener compatibilidad total.
+if command -v prometheus >/dev/null 2>&1; then
+  if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
+    echo "==> Actualizando Prometheus a versión moderna compatible con remote write receiver..."
+    PROM_VER="2.55.1"
+    ARCH="amd64"
+    if [[ "$(uname -m)" =~ (aarch64|arm64) ]]; then
+      ARCH="arm64"
+    fi
+    TMP_PROM="/tmp/prometheus-${PROM_VER}.linux-${ARCH}"
+    curl -fsSL --connect-timeout 10 --max-time 60 "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-${ARCH}.tar.gz" | tar -xz -C /tmp
+    if [[ -f "${TMP_PROM}/prometheus" ]]; then
+      install -m 0755 "${TMP_PROM}/prometheus" /usr/bin/prometheus
+      install -m 0755 "${TMP_PROM}/promtool" /usr/bin/promtool
+      rm -rf "${TMP_PROM}"
+      echo "  [OK] Prometheus actualizado a v${PROM_VER}"
+    fi
+  fi
+fi
+
 run_cmd install -d -o prometheus -g prometheus -m 0750 /etc/prometheus/rules
 run_cmd install -m 0644 "$SCRIPT_DIR/prometheus/prometheus.yml" /etc/prometheus/prometheus.yml
 run_cmd install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "[DRY-RUN] Configurar /etc/default/prometheus"
 else
-  # Detectar sintaxis del flag para habilitar remote write receiver según la versión de Prometheus:
-  # - Prometheus >= 2.33 (Ubuntu 22.04 / 24.04): --web.enable-remote-write-receiver
-  # - Prometheus <= 2.15 (Ubuntu 20.04): --enable-feature=remote-write-receiver
-  PROM_RW_FLAG="--web.enable-remote-write-receiver"
-  if command -v prometheus >/dev/null 2>&1; then
-    if prometheus --help 2>&1 | grep -q 'enable-feature='; then
-      if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
-        PROM_RW_FLAG="--enable-feature=remote-write-receiver"
-      fi
-    fi
-  fi
-  cat > /etc/default/prometheus <<EOF
-ARGS="--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/metrics2 --storage.tsdb.retention.time=15d --web.listen-address=127.0.0.1:9090 ${PROM_RW_FLAG}"
+  cat > /etc/default/prometheus <<'EOF'
+ARGS="--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/metrics2 --storage.tsdb.retention.time=15d --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver"
 EOF
 fi
 run_cmd chown -R prometheus:prometheus /etc/prometheus
@@ -466,6 +477,12 @@ run_cmd chmod 0640 /etc/prometheus/prometheus.yml /etc/prometheus/rules/host-ale
 
 echo "==> Configurando Loki solo en loopback (retención 14 días)"
 # Garantizar la existencia del grupo y usuario del sistema loki
+if ! getent group loki >/dev/null 2>&1; then
+  run_cmd groupadd --system loki || true
+fi
+if ! getent passwd loki >/dev/null 2>&1; then
+  run_cmd useradd --system -g loki -d /var/lib/loki -s /usr/sbin/nologin loki || true
+fi
 if ! getent group loki >/dev/null 2>&1; then
   run_cmd groupadd --system loki || true
 fi
