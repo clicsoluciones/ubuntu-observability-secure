@@ -360,6 +360,42 @@ CRON
   fi
 fi
 
+# Verificar whitelist por defecto de seguridad en CrowdSec (loopback y RFC1918)
+if [[ -d /etc/crowdsec/parsers/s02-enrich ]]; then
+  if [[ ! -f /etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml ]]; then
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_warn "No existe whitelist por defecto para loopback y RFC1918 en CrowdSec (/etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml)"
+    else
+      cat > /etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml <<'EOF'
+name: default/infra_whitelists
+description: "Whitelist automatica de loopback y rangos privados para prevenir autobloqueo de servicios internos"
+whitelist:
+  reason: "Servicios locales e interfaces internas"
+  ip:
+    - "127.0.0.1"
+    - "::1"
+  cidr:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+EOF
+      systemctl reload crowdsec 2>/dev/null || true
+      report_fixed "Creada whitelist por defecto para loopback y RFC1918 en /etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml"
+    fi
+  else
+    report_pass "Whitelist base de loopback y RFC1918 presente en CrowdSec"
+  fi
+fi
+
+# Validar sintaxis de parsers y configuracion de CrowdSec
+if command -v crowdsec >/dev/null 2>&1; then
+  if crowdsec -t >/dev/null 2>&1; then
+    report_pass "Sintaxis de configuracion y parsers de CrowdSec verificada correctamente (crowdsec -t)"
+  else
+    report_fail "La configuracion o parsers de CrowdSec contienen errores de sintaxis (ejecute 'crowdsec -t' para diagnosticar)"
+  fi
+fi
+
 # Verificar lectura real de /var/log/auth.log por parte de alloy
 if [[ ! -f /var/log/auth.log ]]; then
   if [[ "$CHECK_ONLY" -eq 1 ]]; then
