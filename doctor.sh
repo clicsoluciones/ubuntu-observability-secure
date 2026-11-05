@@ -430,35 +430,39 @@ if [[ -f /var/log/auth.log ]]; then
   fi
 fi
 
-# Verificar existencia y permisos de lectura de /var/log/ufw.log por parte de alloy
-if [[ ! -f /var/log/ufw.log ]]; then
-  if [[ "$CHECK_ONLY" -eq 1 ]]; then
-    report_warn "/var/log/ufw.log no existe (UFW puede estar inactivo o sin logging activado)"
-  else
-    touch /var/log/ufw.log
-    chown syslog:adm /var/log/ufw.log 2>/dev/null || chgrp adm /var/log/ufw.log 2>/dev/null || true
-    chmod 0640 /var/log/ufw.log 2>/dev/null || true
-    report_fixed "Creado /var/log/ufw.log inicial (0640 grupo adm) para ingesta en Alloy"
-  fi
-fi
-
-if [[ -f /var/log/ufw.log ]]; then
-  if runuser -u alloy -- test -r /var/log/ufw.log 2>/dev/null; then
-    report_pass "El usuario 'alloy' tiene acceso de lectura verificado sobre /var/log/ufw.log"
-  else
+# Verificar existencia y permisos de lectura de /var/log/ufw.log solo si UFW está activo
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qw "active"; then
+  if [[ ! -f /var/log/ufw.log ]]; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "El usuario 'alloy' NO puede leer /var/log/ufw.log (permisos actuales: $(stat -c '%a %U:%G' /var/log/ufw.log 2>/dev/null))"
+      report_warn "UFW está activo pero /var/log/ufw.log no existe aún (posiblemente sin 'ufw logging on')"
     else
-      chgrp adm /var/log/ufw.log 2>/dev/null || true
+      touch /var/log/ufw.log
+      chown syslog:adm /var/log/ufw.log 2>/dev/null || chgrp adm /var/log/ufw.log 2>/dev/null || true
       chmod 0640 /var/log/ufw.log 2>/dev/null || true
-      NEED_ALLOY_RESTART=1
-      if runuser -u alloy -- test -r /var/log/ufw.log 2>/dev/null; then
-        report_fixed "Reparados permisos de /var/log/ufw.log (grupo adm, modo 0640) para lectura por Alloy"
+      report_fixed "Creado /var/log/ufw.log (0640 syslog:adm) para ingesta de UFW en Alloy"
+    fi
+  fi
+
+  if [[ -f /var/log/ufw.log ]]; then
+    if runuser -u alloy -- test -r /var/log/ufw.log 2>/dev/null; then
+      report_pass "El usuario 'alloy' tiene acceso de lectura verificado sobre /var/log/ufw.log"
+    else
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "El usuario 'alloy' NO puede leer /var/log/ufw.log (permisos actuales: $(stat -c '%a %U:%G' /var/log/ufw.log 2>/dev/null))"
       else
-        report_fail "No se pudo otorgar lectura a 'alloy' sobre /var/log/ufw.log"
+        chown syslog:adm /var/log/ufw.log 2>/dev/null || chgrp adm /var/log/ufw.log 2>/dev/null || true
+        chmod 0640 /var/log/ufw.log 2>/dev/null || true
+        NEED_ALLOY_RESTART=1
+        if runuser -u alloy -- test -r /var/log/ufw.log 2>/dev/null; then
+          report_fixed "Reparados permisos de /var/log/ufw.log (syslog:adm, modo 0640) para lectura por Alloy"
+        else
+          report_fail "No se pudo otorgar lectura a 'alloy' sobre /var/log/ufw.log"
+        fi
       fi
     fi
   fi
+else
+  report_pass "UFW no está activo en este host (se omite /var/log/ufw.log)"
 fi
 
 # Verificar existencia y permisos de lectura de /var/log/crowdsec.log por parte de alloy
