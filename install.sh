@@ -446,8 +446,19 @@ run_cmd install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rule
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "[DRY-RUN] Configurar /etc/default/prometheus"
 else
-  cat > /etc/default/prometheus <<'EOF'
-ARGS="--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/metrics2 --storage.tsdb.retention.time=15d --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver"
+  # Detectar sintaxis del flag para habilitar remote write receiver según la versión de Prometheus:
+  # - Prometheus >= 2.33 (Ubuntu 22.04 / 24.04): --web.enable-remote-write-receiver
+  # - Prometheus <= 2.15 (Ubuntu 20.04): --enable-feature=remote-write-receiver
+  PROM_RW_FLAG="--web.enable-remote-write-receiver"
+  if command -v prometheus >/dev/null 2>&1; then
+    if prometheus --help 2>&1 | grep -q 'enable-feature='; then
+      if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
+        PROM_RW_FLAG="--enable-feature=remote-write-receiver"
+      fi
+    fi
+  fi
+  cat > /etc/default/prometheus <<EOF
+ARGS="--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/metrics2 --storage.tsdb.retention.time=15d --web.listen-address=127.0.0.1:9090 ${PROM_RW_FLAG}"
 EOF
 fi
 run_cmd chown -R prometheus:prometheus /etc/prometheus

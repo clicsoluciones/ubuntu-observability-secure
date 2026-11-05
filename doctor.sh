@@ -231,6 +231,17 @@ if [[ -d /var/lib/loki ]]; then
   fi
 fi
 
+# Verificar y corregir configuración de argumentos de Prometheus (/etc/default/prometheus)
+if [[ -f /etc/default/prometheus ]] && grep -q 'unknown long flag.*web.enable-remote-write-receiver' <(journalctl -u prometheus -n 15 2>/dev/null || true); then
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    report_fail "Prometheus está fallando debido a sintaxis antigua de flags (--enable-feature=remote-write-receiver requerido en Ubuntu 20.04)"
+  else
+    sed -i 's/--web\.enable-remote-write-receiver/--enable-feature=remote-write-receiver/g' /etc/default/prometheus
+    NEED_PROM_RESTART=1
+    report_fixed "Corregido flag de remote-write-receiver para la versión de Prometheus de Ubuntu 20.04"
+  fi
+fi
+
 # Sincronizar /etc/loki/config.yml con el repositorio si falta o si no tiene instance_addr configurado
 if [[ -f "$SCRIPT_DIR/loki/config.yml" ]]; then
   if [[ ! -f /etc/loki/config.yml ]] || ! grep -q 'instance_addr' /etc/loki/config.yml 2>/dev/null; then
