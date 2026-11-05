@@ -394,7 +394,18 @@ if [[ -f /var/log/auth.log ]]; then
   fi
 fi
 
-# Verificar permisos de lectura de /var/log/ufw.log por parte de alloy
+# Verificar existencia y permisos de lectura de /var/log/ufw.log por parte de alloy
+if [[ ! -f /var/log/ufw.log ]]; then
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    report_warn "/var/log/ufw.log no existe (UFW puede estar inactivo o sin logging activado)"
+  else
+    touch /var/log/ufw.log
+    chown syslog:adm /var/log/ufw.log 2>/dev/null || chgrp adm /var/log/ufw.log 2>/dev/null || true
+    chmod 0640 /var/log/ufw.log 2>/dev/null || true
+    report_fixed "Creado /var/log/ufw.log inicial (0640 grupo adm) para ingesta en Alloy"
+  fi
+fi
+
 if [[ -f /var/log/ufw.log ]]; then
   if runuser -u alloy -- test -r /var/log/ufw.log 2>/dev/null; then
     report_pass "El usuario 'alloy' tiene acceso de lectura verificado sobre /var/log/ufw.log"
@@ -414,7 +425,18 @@ if [[ -f /var/log/ufw.log ]]; then
   fi
 fi
 
-# Verificar permisos de lectura de /var/log/crowdsec.log por parte de alloy
+# Verificar existencia y permisos de lectura de /var/log/crowdsec.log por parte de alloy
+if [[ ! -f /var/log/crowdsec.log ]]; then
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    report_warn "/var/log/crowdsec.log no existe aún en el sistema"
+  else
+    touch /var/log/crowdsec.log
+    chgrp adm /var/log/crowdsec.log 2>/dev/null || true
+    chmod 0640 /var/log/crowdsec.log 2>/dev/null || true
+    report_fixed "Creado /var/log/crowdsec.log inicial (0640 grupo adm)"
+  fi
+fi
+
 if [[ -f /var/log/crowdsec.log ]]; then
   if runuser -u alloy -- test -r /var/log/crowdsec.log 2>/dev/null; then
     report_pass "El usuario 'alloy' tiene acceso de lectura verificado sobre /var/log/crowdsec.log"

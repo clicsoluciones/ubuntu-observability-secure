@@ -528,11 +528,13 @@ else
 SupplementaryGroups=$ALLOY_SUPP_GROUPS
 EOF
 fi
-for log_f in /var/log/auth.log /var/log/ufw.log; do
-  if [[ -f "$log_f" ]]; then
-    run_cmd chgrp adm "$log_f" 2>/dev/null || true
-    run_cmd chmod 0640 "$log_f" 2>/dev/null || true
+# Asegurar existencia y permisos de lectura (grupo adm, 0640) para logs del sistema, firewall e IPS
+for log_f in /var/log/auth.log /var/log/ufw.log /var/log/crowdsec.log; do
+  if [[ ! -f "$log_f" ]]; then
+    run_cmd touch "$log_f" 2>/dev/null || true
   fi
+  run_cmd chown syslog:adm "$log_f" 2>/dev/null || run_cmd chgrp adm "$log_f" 2>/dev/null || true
+  run_cmd chmod 0640 "$log_f" 2>/dev/null || true
 done
 
 echo "==> Configurando fuentes de datos, dashboards y las 16 alertas preconfiguradas de Grafana"
