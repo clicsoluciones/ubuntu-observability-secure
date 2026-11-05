@@ -2257,12 +2257,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=~\"ufw_firewall|crowdsec_ips|nginx_error\"} |~ \"(?i)\"",
+          "expr": "{job=\"ufw_firewall\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "Logs de Firewall UFW, IPS CrowdSec y Nginx (*error*.log, ufw.log, crowdsec.log)",
+      "title": "Logs de Firewall UFW (/var/log/ufw.log)",
       "type": "logs"
     },
     {
@@ -2273,6 +2273,80 @@
       "gridPos": {
         "x": 12,
         "y": 79,
+        "w": 12,
+        "h": 10
+      },
+      "id": 54,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"crowdsec_ips\"} |~ \"(?i)\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs de IPS CrowdSec (/var/log/crowdsec.log)",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 89,
+        "w": 12,
+        "h": 10
+      },
+      "id": 55,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{job=~\"nginx_error|nginx_access\"} |~ \"(?i)\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs de Servidor Web Nginx (*error*.log, *access*.log)",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 89,
         "w": 12,
         "h": 10
       },
@@ -2294,12 +2368,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=~\"nginx_access|systemd_journal\"} |~ \"(?i)\"",
+          "expr": "{job=\"systemd_journal\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "Logs de Accesos Web Nginx y Journald (*access*.log, systemd)",
+      "title": "Logs del Sistema Journald (systemd-journal)",
       "type": "logs"
     }
   ],

@@ -394,6 +394,46 @@ if [[ -f /var/log/auth.log ]]; then
   fi
 fi
 
+# Verificar permisos de lectura de /var/log/ufw.log por parte de alloy
+if [[ -f /var/log/ufw.log ]]; then
+  if runuser -u alloy -- test -r /var/log/ufw.log 2>/dev/null; then
+    report_pass "El usuario 'alloy' tiene acceso de lectura verificado sobre /var/log/ufw.log"
+  else
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_fail "El usuario 'alloy' NO puede leer /var/log/ufw.log (permisos actuales: $(stat -c '%a %U:%G' /var/log/ufw.log 2>/dev/null))"
+    else
+      chgrp adm /var/log/ufw.log 2>/dev/null || true
+      chmod 0640 /var/log/ufw.log 2>/dev/null || true
+      NEED_ALLOY_RESTART=1
+      if runuser -u alloy -- test -r /var/log/ufw.log 2>/dev/null; then
+        report_fixed "Reparados permisos de /var/log/ufw.log (grupo adm, modo 0640) para lectura por Alloy"
+      else
+        report_fail "No se pudo otorgar lectura a 'alloy' sobre /var/log/ufw.log"
+      fi
+    fi
+  fi
+fi
+
+# Verificar permisos de lectura de /var/log/crowdsec.log por parte de alloy
+if [[ -f /var/log/crowdsec.log ]]; then
+  if runuser -u alloy -- test -r /var/log/crowdsec.log 2>/dev/null; then
+    report_pass "El usuario 'alloy' tiene acceso de lectura verificado sobre /var/log/crowdsec.log"
+  else
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_fail "El usuario 'alloy' NO puede leer /var/log/crowdsec.log (permisos actuales: $(stat -c '%a %U:%G' /var/log/crowdsec.log 2>/dev/null))"
+    else
+      chgrp adm /var/log/crowdsec.log 2>/dev/null || true
+      chmod 0640 /var/log/crowdsec.log 2>/dev/null || true
+      NEED_ALLOY_RESTART=1
+      if runuser -u alloy -- test -r /var/log/crowdsec.log 2>/dev/null; then
+        report_fixed "Reparados permisos de /var/log/crowdsec.log (grupo adm, modo 0640) para lectura por Alloy"
+      else
+        report_fail "No se pudo otorgar lectura a 'alloy' sobre /var/log/crowdsec.log"
+      fi
+    fi
+  fi
+fi
+
 # Verificar permisos de /var/lib/grafana, dashboard y alertas aprovisionadas
 if [[ -f /etc/grafana/provisioning/alerting/observability-alerts.yml ]]; then
   report_pass "Catálogo de 16 reglas de Grafana Alerting aprovisionado (/etc/grafana/provisioning/alerting/observability-alerts.yml)"
