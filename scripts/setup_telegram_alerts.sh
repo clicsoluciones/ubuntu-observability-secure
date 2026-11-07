@@ -206,13 +206,71 @@ chmod 0640 "$PROV_DIR/telegram.yml"
 echo "==> Reiniciando servicio grafana-server..."
 systemctl restart grafana-server 2>/dev/null || true
 
+# 6. Aprovisionar notificaciones instantáneas de cada IP bloqueada en CrowdSec (con Country)
+if command -v cscli >/dev/null 2>&1 && [[ -d /etc/crowdsec ]]; then
+  echo "==> Configurando notificaciones de bloqueos de IP en CrowdSec..."
+  install -d -m 0755 /etc/crowdsec/notifications
+  cat > /etc/crowdsec/notifications/telegram.yaml <<EOF
+type: http
+name: telegram_bans
+log_level: info
+timeout: 10s
+max_retry: 3
+
+url: https://api.telegram.org/bot${BOT_TOKEN}/sendMessage
+method: POST
+headers:
+  Content-Type: "application/json"
+
+format: |
+  {
+    "chat_id": "${CHAT_ID}",
+    "parse_mode": "HTML",
+    "text": "{{range . -}}{{\$alert := . -}}{{range .Decisions -}}🛡️ <b>CrowdSec: IP Bloqueada en Firewall</b>\\n• <b>IP Atacante:</b> <code>{{.Value}}</code>\\n• <b>País:</b> {{if \$alert.Source.Cn}}{{\$alert.Source.Cn}}{{if \$alert.Source.AsName}} ({{print \$alert.Source.AsName}}){{end}}{{else}}Desconocido{{end}}\\n• <b>Ataque:</b> <code>{{\$alert.Scenario}}</code>\\n• <b>Acción:</b> {{.Type}} por {{.Duration}}\\n• <b>Servidor:</b> <code>$(hostname)</code>\\n\\n{{end}}{{end}}"
+  }
+EOF
+
+  # Activar telegram_bans en /etc/crowdsec/profiles.yaml
+  if [[ -f /etc/crowdsec/profiles.yaml ]]; then
+    python3 -c "
+import sys, re
+path = '/etc/crowdsec/profiles.yaml'
+try:
+    with open(path, 'r') as f:
+        content = f.read()
+    if 'telegram_bans' not in content:
+        if re.search(r'^\s*notifications:', content, re.MULTILINE):
+            content = re.sub(r'(^\s*notifications:)', r'\1\n  - telegram_bans', content, count=1, flags=re.MULTILINE)
+        elif 'on_success: break' in content:
+            content = content.replace('on_success: break', 'notifications:\n  - telegram_bans\non_success: break', 1)
+        else:
+            content += '\nnotifications:\n  - telegram_bans\n'
+        with open(path, 'w') as f:
+            f.write(content)
+        print('==> [OK] Vinculado telegram_bans en /etc/crowdsec/profiles.yaml')
+except Exception as e:
+    print(f'Advertencia al actualizar profiles.yaml: {e}', file=sys.stderr)
+" 2>/dev/null || true
+  fi
+
+  # Validar sintaxis y recargar CrowdSec
+  if command -v crowdsec >/dev/null 2>&1; then
+    if crowdsec -t >/dev/null 2>&1; then
+      systemctl reload crowdsec 2>/dev/null || systemctl restart crowdsec 2>/dev/null || true
+      echo "==> [OK] CrowdSec recargado con notificaciones automáticas de IP en Telegram."
+    else
+      echo "Advertencia: La validación de CrowdSec arrojó errores; verifique con 'crowdsec -t'" >&2
+    fi
+  fi
+fi
+
 echo ""
 echo "====================================================================="
 echo "   [LISTO] Integración con Telegram completada exitosamente"
 echo "====================================================================="
 echo "  • Bot: @${bot_username}"
 echo "  • Chat ID: ${CHAT_ID}"
-echo "  • Contact Point: telegram-alertas"
-echo "  • Archivo seguro: $PROV_DIR/telegram.yml (0640 root:grafana)"
-echo "  • Las alertas activas y resueltas se notificarán automáticamente al grupo."
+echo "  • Grafana Contact Point: telegram-alertas (plantilla limpia ejecutiva)"
+echo "  • CrowdSec IPS: Notificación en tiempo real por cada IP bloqueada con País"
+echo "  • Servidor: $(hostname)"
 echo "====================================================================="
