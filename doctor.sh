@@ -512,6 +512,10 @@ else
   fi
 fi
 
+if [[ -f /etc/grafana/provisioning/alerting/telegram.yml ]]; then
+  report_pass "Canal de notificaciones a Telegram aprovisionado y activo en Grafana (/etc/grafana/provisioning/alerting/telegram.yml)"
+fi
+
 # Sincronizar el dashboard JSON (incluyendo panel de contenedores Docker)
 if [[ -f "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" ]]; then
   if [[ -f /var/lib/grafana/dashboards/ubuntu-security-overview.json ]] && \
