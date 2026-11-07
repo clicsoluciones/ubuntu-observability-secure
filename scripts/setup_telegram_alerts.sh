@@ -91,11 +91,43 @@ fi
 
 # 3. Enviar mensaje de prueba a Telegram
 echo "==> Enviando mensaje de prueba al chat $CHAT_ID..."
-test_msg="🚀 <b>Grafana Alerting: Conexión Exitosa</b>%0A%0ASe ha configurado el canal de alertas para el servidor: <code>$(hostname)</code>.%0ATodas las 16 alertas de infraestructura y seguridad se notificarán a este grupo."
-send_result="$(curl -s -f -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-  -d "chat_id=${CHAT_ID}" \
-  -d "parse_mode=HTML" \
-  -d "text=${test_msg}" 2>/dev/null || true)"
+
+send_telegram_msg() {
+  local target="$1"
+  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${target}" \
+    --data-urlencode "parse_mode=HTML" \
+    --data-urlencode "text=🚀 <b>Grafana Alerting: Conexión Exitosa</b>
+
+Se ha configurado el canal de alertas para el servidor: <code>$(hostname)</code>.
+Todas las 16 alertas de infraestructura y seguridad se notificarán a este grupo." 2>/dev/null || true
+}
+
+send_result="$(send_telegram_msg "$CHAT_ID")"
+
+if [[ -z "$send_result" ]] || ! grep -q '"ok":true' <<< "$send_result"; then
+  # Si el usuario copio el ID desde Telegram Web K (ej: -5295361051 sin el prefijo -100)
+  if [[ "$CHAT_ID" =~ ^-[0-9]+$ ]] && [[ ! "$CHAT_ID" =~ ^-100 ]]; then
+    candidate_id="-100${CHAT_ID#-}"
+    echo "==> Reintentando con prefijo oficial de supergrupo Telegram ($candidate_id)..."
+    retry_result="$(send_telegram_msg "$candidate_id")"
+    if grep -q '"ok":true' <<< "$retry_result"; then
+      CHAT_ID="$candidate_id"
+      send_result="$retry_result"
+      echo "==> [OK] Detectado supergrupo de Telegram. Chat ID ajustado a: $CHAT_ID"
+    fi
+  elif [[ "$CHAT_ID" =~ ^[0-9]{9,}$ ]]; then
+    # Omitio el signo menos por completo
+    candidate_id="-100${CHAT_ID}"
+    echo "==> Reintentando con prefijo de supergrupo ($candidate_id)..."
+    retry_result="$(send_telegram_msg "$candidate_id")"
+    if grep -q '"ok":true' <<< "$retry_result"; then
+      CHAT_ID="$candidate_id"
+      send_result="$retry_result"
+      echo "==> [OK] Detectado supergrupo de Telegram. Chat ID ajustado a: $CHAT_ID"
+    fi
+  fi
+fi
 
 if [[ -z "$send_result" ]] || ! grep -q '"ok":true' <<< "$send_result"; then
   echo "Error: No se pudo enviar el mensaje a Telegram." >&2
