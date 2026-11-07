@@ -139,12 +139,42 @@ fi
 echo "==> [OK] Mensaje de prueba recibido en Telegram con éxito."
 
 # 4. Aprovisionar configuración en Grafana
-echo "==> Aprovisionando Contact Point y Notification Policy en Grafana..."
+echo "==> Aprovisionando Contact Point, Plantilla Limpia y Notification Policy en Grafana..."
 PROV_DIR="/etc/grafana/provisioning/alerting"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 install -d -m 0750 "$PROV_DIR"
+
+# Sincronizar reglas actualizadas si existen en el repo (filtra squashfs/snap)
+if [[ -f "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" ]]; then
+  install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" "$PROV_DIR/observability-alerts.yml"
+  chown root:grafana "$PROV_DIR/observability-alerts.yml" 2>/dev/null || true
+fi
 
 cat > "$PROV_DIR/telegram.yml" <<EOF
 apiVersion: 1
+
+templates:
+  - orgId: 1
+    name: telegram_alert_template
+    template: |
+      {{ define "telegram.message" }}
+      {{- if eq .Status "firing" }}🔥 <b>ALERTA DISPARADA</b> ({{ .Alerts.Firing | len }}){{ else }}✅ <b>ALERTA RESUELTA</b> ({{ .Alerts.Resolved | len }}){{ end }}
+
+      {{ range .Alerts }}
+      📌 <b>{{ .Labels.alertname }}</b>
+      • <b>Severidad:</b> {{ .Labels.severity | toUpper }}
+      • <b>Servidor:</b> <code>{{ .Labels.instance }}</code>
+      {{- if .Labels.mountpoint }}
+      • <b>Partición:</b> <code>{{ .Labels.mountpoint }}</code>
+      {{- end }}
+      • <b>Resumen:</b> {{ .Annotations.summary }}
+      {{- if .Annotations.description }}
+      • <b>Detalle:</b> {{ .Annotations.description }}
+      {{- end }}
+      • <b>Hora:</b> {{ .StartsAt.Format "15:04:05 UTC" }}
+      ----------------------------------------
+      {{ end }}
+      {{ end }}
 
 contactPoints:
   - orgId: 1
@@ -157,6 +187,8 @@ contactPoints:
           bottoken: "$BOT_TOKEN"
           chatid: "$CHAT_ID"
           parse_mode: "HTML"
+          message: |
+            {{ template "telegram.message" . }}
 
 policies:
   - orgId: 1

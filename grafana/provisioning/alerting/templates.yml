@@ -1,0 +1,24 @@
+apiVersion: 1
+
+templates:
+  - orgId: 1
+    name: telegram_alert_template
+    template: |
+      {{ define "telegram.message" }}
+      {{- if eq .Status "firing" }}🔥 <b>ALERTA DISPARADA</b> ({{ .Alerts.Firing | len }}){{ else }}✅ <b>ALERTA RESUELTA</b> ({{ .Alerts.Resolved | len }}){{ end }}
+
+      {{ range .Alerts }}
+      📌 <b>{{ .Labels.alertname }}</b>
+      • <b>Severidad:</b> {{ .Labels.severity | toUpper }}
+      • <b>Servidor:</b> <code>{{ .Labels.instance }}</code>
+      {{- if .Labels.mountpoint }}
+      • <b>Partición:</b> <code>{{ .Labels.mountpoint }}</code>
+      {{- end }}
+      • <b>Resumen:</b> {{ .Annotations.summary }}
+      {{- if .Annotations.description }}
+      • <b>Detalle:</b> {{ .Annotations.description }}
+      {{- end }}
+      • <b>Hora:</b> {{ .StartsAt.Format "15:04:05 UTC" }}
+      ----------------------------------------
+      {{ end }}
+      {{ end }}

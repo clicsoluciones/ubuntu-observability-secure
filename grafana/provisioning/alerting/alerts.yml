@@ -150,7 +150,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: '(1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100'
+              expr: '(1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint!~"^/(snap|var/lib/docker/overlay2|run|sys|dev).*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint!~"^/(snap|var/lib/docker/overlay2|run|sys|dev).*",node_filesystem_size_bytes>0})) * 100'
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200

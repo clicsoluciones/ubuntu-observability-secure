@@ -19,7 +19,7 @@ groups:
           description: "Memoria usada superior al 90% durante 5 minutos."
 
       - alert: HostDiskAlmostFull
-        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes)) * 100 > 85
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint!~"^/(snap|var/lib/docker/overlay2|run|sys|dev).*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint!~"^/(snap|var/lib/docker/overlay2|run|sys|dev).*",node_filesystem_size_bytes>0})) * 100 > 85
         for: 10m
         labels: { severity: warning, category: resources }
         annotations:

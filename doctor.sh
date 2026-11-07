@@ -497,18 +497,38 @@ if [[ -f /var/log/crowdsec.log ]]; then
 fi
 
 # Verificar permisos de /var/lib/grafana, dashboard y alertas aprovisionadas
-if [[ -f /etc/grafana/provisioning/alerting/observability-alerts.yml ]]; then
-  report_pass "Catálogo de 16 reglas de Grafana Alerting aprovisionado (/etc/grafana/provisioning/alerting/observability-alerts.yml)"
-else
-  if [[ "$CHECK_ONLY" -eq 1 ]]; then
-    report_fail "Falta el archivo de alertas /etc/grafana/provisioning/alerting/observability-alerts.yml"
-  elif [[ -f "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" ]]; then
-    install -d -m 0755 /etc/grafana/provisioning/alerting
-    install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
-      /etc/grafana/provisioning/alerting/observability-alerts.yml
-    chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
-    NEED_GRAFANA_RESTART=1
-    report_fixed "Aprovisionadas las 16 alertas en /etc/grafana/provisioning/alerting/observability-alerts.yml"
+# Sincronizar catálogo de 16 reglas de Grafana Alerting si fue actualizado en el repositorio
+if [[ -f "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" ]]; then
+  install -d -m 0755 /etc/grafana/provisioning/alerting
+  if [[ ! -f /etc/grafana/provisioning/alerting/observability-alerts.yml ]] || \
+     ! cmp -s "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" /etc/grafana/provisioning/alerting/observability-alerts.yml; then
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_warn "Las reglas de Grafana Alerting difieren del catálogo del repositorio"
+    else
+      install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
+        /etc/grafana/provisioning/alerting/observability-alerts.yml
+      chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
+      NEED_GRAFANA_RESTART=1
+      report_fixed "Actualizado catálogo de 16 alertas en /etc/grafana/provisioning/alerting/observability-alerts.yml (filtra squashfs y snap)"
+    fi
+  else
+    report_pass "Catálogo de 16 reglas de Grafana Alerting aprovisionado y actualizado"
+  fi
+fi
+
+# Sincronizar reglas de alerta de Prometheus del host
+if [[ -f "$SCRIPT_DIR/rules/host-alerts.yml" && -d /etc/prometheus/rules ]]; then
+  if [[ ! -f /etc/prometheus/rules/host-alerts.yml ]] || \
+     ! cmp -s "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml; then
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      report_warn "Las reglas de Prometheus (/etc/prometheus/rules/host-alerts.yml) difieren del repositorio"
+    else
+      install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml
+      systemctl reload prometheus 2>/dev/null || true
+      report_fixed "Actualizado /etc/prometheus/rules/host-alerts.yml y recargado Prometheus"
+    fi
+  else
+    report_pass "Reglas de Prometheus host-alerts.yml actualizadas"
   fi
 fi
 
