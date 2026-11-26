@@ -13,19 +13,21 @@ show_help() {
 Uso: sudo ./add_satellite.sh <NOMBRE_SATELITE> [OPCIONES]
 
 Registra un nuevo nodo satélite en el servidor Máster, asigna IP privada en WireGuard
-y genera el comando de instalación automatizado para ejecutar en el satélite.
+y genera el comando de instalación seguro para ejecutar en el satélite.
 
 Argumentos:
   <NOMBRE_SATELITE>         Identificador único del satélite (ej. frontend, backend, worker-01).
 
 Opciones:
+  --pubkey <PUBKEY>         Clave pública generada por el satélite (si ya se ejecutó install.sh allí).
   --ip <IP_PRIVADA>         Asigna manualmente la IP en WireGuard (ej. 10.10.0.2).
   --endpoint <IP:PUERTO>    Sobrescribe el endpoint público del Máster (ej. 198.51.100.5:51820).
   -h, --help                Muestra esta ayuda y termina.
 
 Ejemplos:
   sudo ./add_satellite.sh frontend
-  sudo ./add_satellite.sh backend --ip 10.10.0.3
+  sudo ./add_satellite.sh backend --pubkey "CLAVE_PUBLICA_GENERADA_EN_SATELITE"
+  sudo ./add_satellite.sh worker-01 --ip 10.10.0.3
 EOF
 }
 
@@ -37,12 +39,17 @@ fi
 SAT_NAME=""
 CUSTOM_IP=""
 CUSTOM_ENDPOINT=""
+CUSTOM_PUBKEY=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       show_help
       exit 0
+      ;;
+    --pubkey)
+      CUSTOM_PUBKEY="$2"
+      shift 2
       ;;
     --ip)
       CUSTOM_IP="$2"
@@ -104,13 +111,18 @@ else
   SAT_IP="10.10.0.${NEXT_OCTET}"
 fi
 
-# 2. Generar pares de claves para el satélite
-if command -v wg >/dev/null 2>&1; then
-  SAT_PRIVKEY="$(wg genkey)"
-  SAT_PUBKEY="$(echo "$SAT_PRIVKEY" | wg pubkey)"
+# 2. Clave del satélite
+if [[ -n "$CUSTOM_PUBKEY" ]]; then
+  SAT_PUBKEY="$CUSTOM_PUBKEY"
+  SAT_PRIVKEY=""
 else
-  SAT_PRIVKEY="$(openssl rand -base64 32)"
-  SAT_PUBKEY="$(openssl rand -base64 32)"
+  if command -v wg >/dev/null 2>&1; then
+    SAT_PRIVKEY="$(wg genkey)"
+    SAT_PUBKEY="$(echo "$SAT_PRIVKEY" | wg pubkey)"
+  else
+    SAT_PRIVKEY="$(openssl rand -base64 32)"
+    SAT_PUBKEY="$(openssl rand -base64 32)"
+  fi
 fi
 
 # 3. Clave pública del Máster
@@ -131,13 +143,9 @@ else
   MASTER_ENDPOINT="${PUB_IP}:51820"
 fi
 
-# 5. Generar credenciales de CrowdSec LAPI si CrowdSec está presente
-CS_PASS=""
+# 5. Limpiar registro previo en CrowdSec LAPI si existiera
 if command -v cscli >/dev/null 2>&1; then
-  CS_PASS="$(openssl rand -hex 16)"
-  # Registrar máquina en CrowdSec LAPI local
   cscli machines delete "$SAT_NAME" >/dev/null 2>&1 || true
-  cscli machines add "$SAT_NAME" --password "$CS_PASS" --auto >/dev/null 2>&1 || true
 fi
 
 # 6. Registrar Peer en wg0.conf si no existe ya
@@ -159,9 +167,10 @@ if command -v wg >/dev/null 2>&1 && ip link show wg0 >/dev/null 2>&1; then
   wg set wg0 peer "$SAT_PUBKEY" allowed-ips "${SAT_IP}/32" || true
 fi
 
-# 8. Guardar archivo de configuración local del satélite de respaldo
+# 8. Guardar archivo de configuración local del satélite de respaldo (si se generó clave privada)
 SAT_CONF="${SATELLITES_DIR}/${SAT_NAME}.conf"
-cat > "$SAT_CONF" <<EOF
+if [[ -n "$SAT_PRIVKEY" ]]; then
+  cat > "$SAT_CONF" <<EOF
 [Interface]
 Address = ${SAT_IP}/24
 PrivateKey = ${SAT_PRIVKEY}
@@ -172,9 +181,15 @@ Endpoint = ${MASTER_ENDPOINT}
 AllowedIPs = 10.10.0.0/24
 PersistentKeepalive = 25
 EOF
-chmod 0600 "$SAT_CONF"
+  chmod 0600 "$SAT_CONF"
+fi
 
-# 9. Imprimir banner con el comando exacto para el satélite
+# 9. Imprimir banner con el comando seguro para el satélite
+CMD="sudo ./install.sh --role satellite --name \"${SAT_NAME}\" --master \"${MASTER_ENDPOINT}\" --master-key \"${MASTER_PUBKEY}\""
+if [[ -n "$CUSTOM_IP" ]]; then
+  CMD="${CMD} --satellite-ip \"${SAT_IP}\""
+fi
+
 cat <<BANNER
 
 ================================================================================
@@ -183,20 +198,36 @@ cat <<BANNER
   - Nombre:           ${SAT_NAME}
   - IP WireGuard:     ${SAT_IP}/24
   - Master Endpoint:  ${MASTER_ENDPOINT}
-  - Config guardada:  ${SAT_CONF}
+  - Master PubKey:    ${MASTER_PUBKEY}
+BANNER
+
+if [[ -n "$CUSTOM_PUBKEY" ]]; then
+  echo "  - Satélite PubKey:  ${SAT_PUBKEY}"
+elif [[ -f "$SAT_CONF" ]]; then
+  echo "  - Config local:     ${SAT_CONF}"
+fi
+
+cat <<BANNER
 
   >>> COMANDO PARA EJECUTAR EN EL SATÉLITE (${SAT_NAME}): <<<
 
+  $CMD
+
+================================================================================
+  NOTAS DE SEGURIDAD Y VINCULACIÓN:
+  1. No se pasan contraseñas en flags CLI (evita filtraciones en bash history y ps aux).
+  2. El satélite generará sus propias claves WireGuard y deducirá su IP local.
+  3. Una vez finalizada la instalación en el satélite, autoriza su agente CrowdSec
+     ejecutando en este servidor Máster:
+         sudo cscli machines validate "${SAT_NAME}"
 BANNER
 
-CMD="sudo ./install.sh --role satellite --name \"${SAT_NAME}\" --master \"${MASTER_ENDPOINT}\" --master-key \"${MASTER_PUBKEY}\" --satellite-ip \"${SAT_IP}\" --satellite-key \"${SAT_PRIVKEY}\""
-if [[ -n "$CS_PASS" ]]; then
-  CMD="${CMD} --crowdsec-password \"${CS_PASS}\""
+if [[ -z "$CUSTOM_PUBKEY" ]]; then
+  cat <<BANNER
+  4. Si el satélite generó una clave pública WireGuard nueva, sincronízala aquí con:
+         sudo wg set wg0 peer <SATELITE_PUBKEY> allowed-ips ${SAT_IP}/32
+================================================================================
+BANNER
+else
+  echo "================================================================================"
 fi
-
-echo "$CMD"
-echo
-echo "================================================================================"
-echo "Copia y pega el comando anterior en el servidor satélite dentro del directorio"
-echo "de este repositorio para iniciar la conexión cifrada e ingesta automática."
-echo "================================================================================"

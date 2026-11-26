@@ -25,7 +25,8 @@ MASTER_ENDPOINT=""
 MASTER_PUBKEY=""
 SATELLITE_IP=""
 SATELLITE_PRIVKEY=""
-CROWDSEC_PASSWORD=""
+CROWDSEC_PASSWORD="${CROWDSEC_PASSWORD:-}"
+CROWDSEC_CREDENTIALS_FILE=""
 ADD_SAT_NAME=""
 WG_PORT="${WG_PORT:-51820}"
 
@@ -51,15 +52,16 @@ Opciones:
 Opciones para el rol Satellite:
   --name <NOMBRE>           Identificador unico de este satelite (por defecto: hostname).
   --master <IP:PUERTO>      Endpoint publico del Master WireGuard (ej. 198.51.100.5:51820).
-  --master-key <PUBKEY>     Clave publica WireGuard del servidor Master.
-  --satellite-ip <IP>       IP privada asignada en la red WireGuard (ej. 10.10.0.2).
-  --satellite-key <PRIVKEY> Clave privada WireGuard para este satelite.
-  --crowdsec-password <PW>  Contrasena para registrar el agente en el CrowdSec LAPI del Master.
+  --master-key <PUBKEY>     Clave publica WireGuard del servidor Master (si se omite, se solicita en pantalla).
+  --satellite-ip <IP>       (Opcional) IP privada en WireGuard. Si se omite, se deduce automaticamente.
+  --crowdsec-credentials-file <RUTA> (Opcional) Archivo con credenciales de CrowdSec LAPI.
+  --crowdsec-password <PW>  (Opcional, desaconsejado) Contrasena de LAPI. Prefiera validacion sin contrasena en Master.
 
 Variables de entorno compatibles:
   GRAFANA_PORT=<1-65535>    (por defecto: 3000)
   INSTALL_CROWDSEC=0|1      (por defecto: 1)
   INSTALL_BOUNCER=0|1       (por defecto: 1 - bloqueo activo en firewall)
+  CROWDSEC_PASSWORD=<PW>    (Opcional) Contrasena LAPI para registro del satelite.
 
 Ejemplos:
   sudo ./install.sh
@@ -180,12 +182,23 @@ while [[ $# -gt 0 ]]; do
       SATELLITE_PRIVKEY="$2"
       shift 2
       ;;
+    --crowdsec-credentials-file)
+      if [[ $# -lt 2 || -z "${2:-}" || ! -f "${2:-}" ]]; then
+        echo "Error: --crowdsec-credentials-file requiere una ruta a un archivo existente." >&2
+        exit 1
+      fi
+      CROWDSEC_CREDENTIALS_FILE="$2"
+      CROWDSEC_PASSWORD="$(head -n 1 "$CROWDSEC_CREDENTIALS_FILE" | tr -d '\r\n')"
+      shift 2
+      ;;
     --crowdsec-password)
       if [[ $# -lt 2 || -z "${2:-}" ]]; then
         echo "Error: --crowdsec-password requiere una contrasena." >&2
         exit 1
       fi
       CROWDSEC_PASSWORD="$2"
+      echo "[AVISO DE SEGURIDAD] Pasar contraseñas como argumento CLI expone credenciales en el historial y /proc." >&2
+      echo "                     Recomendado: validación sin contraseña con 'sudo cscli machines validate' o usar archivo/variable CROWDSEC_PASSWORD." >&2
       shift 2
       ;;
     --wireguard-port)
@@ -534,12 +547,14 @@ setup_wireguard_master() {
   local server_priv="/etc/wireguard/server_private.key"
   local server_pub="/etc/wireguard/server_public.key"
   local wg_conf="/etc/wireguard/wg0.conf"
+  local pub=""
 
   if [[ ! -f "$server_priv" || ! -f "$server_pub" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "[DRY-RUN] Generar claves de WireGuard del servidor"
+      pub="[CLAVE_PUBLICA_MASTER_DRY_RUN]"
     else
-      local priv pub
+      local priv
       if command -v wg >/dev/null 2>&1; then
         priv="$(wg genkey)"
         pub="$(echo "$priv" | wg pubkey)"
@@ -552,7 +567,20 @@ setup_wireguard_master() {
       chmod 0600 "$server_priv"
       chmod 0644 "$server_pub"
     fi
+  else
+    pub="$(cat "$server_pub" 2>/dev/null || echo "")"
   fi
+
+  cat <<MASTER_KEY_BANNER
+
+================================================================================
+              WIREGUARD MASTER - CLAVES GENERADAS AUTOMÁTICAMENTE
+================================================================================
+  - Master Public Key: ${pub:-"[GENERADA_AL_INSTALAR]"}
+  - Master Endpoint:   ${MASTER_ENDPOINT:-"0.0.0.0:$WG_PORT"}
+  - Master IP Interna: 10.10.0.1/24
+================================================================================
+MASTER_KEY_BANNER
 
   if [[ ! -f "$wg_conf" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -604,23 +632,96 @@ EOF
 }
 
 setup_wireguard_satellite() {
-  echo "==> Configurando WireGuard en Nodo Satelite (IP $SATELLITE_IP/24 -> Master $MASTER_ENDPOINT)"
-  if [[ -z "$MASTER_ENDPOINT" || -z "$MASTER_PUBKEY" || -z "$SATELLITE_IP" ]]; then
-    echo "ERROR: El rol satellite requiere --master <ENDPOINT>, --master-key <PUBKEY> y --satellite-ip <IP>." >&2
-    exit 1
-  fi
-
   run_cmd install -d -m 0700 /etc/wireguard
   local wg_conf="/etc/wireguard/wg0.conf"
 
-  if [[ -z "$SATELLITE_PRIVKEY" ]]; then
-    if command -v wg >/dev/null 2>&1; then
-      SATELLITE_PRIVKEY="$(wg genkey)"
-    else
-      SATELLITE_PRIVKEY="$(openssl rand -base64 32)"
+  # 1. Validar endpoint del Master (añadir puerto 51820 por defecto si no se especificó)
+  if [[ -z "$MASTER_ENDPOINT" ]]; then
+    echo "ERROR: El rol satellite requiere al menos la dirección del servidor Master:" >&2
+    echo "       sudo ./install.sh --role satellite --master <IP_O_DOMINIO>[:51820]" >&2
+    exit 1
+  fi
+  if [[ "$MASTER_ENDPOINT" != *:* ]]; then
+    MASTER_ENDPOINT="${MASTER_ENDPOINT}:51820"
+  fi
+
+  # 2. Deducir automáticamente la IP del Satélite si no se pasó --satellite-ip
+  if [[ -z "$SATELLITE_IP" ]]; then
+    if [[ -f "$wg_conf" ]]; then
+      SATELLITE_IP="$(grep -E '^Address\s*=' "$wg_conf" | awk '{print $3}' | cut -d/ -f1 || true)"
+    fi
+    if [[ -z "$SATELLITE_IP" ]]; then
+      SATELLITE_IP="10.10.0.2"
+      echo "  [Auto-IP] Deduciendo IP de WireGuard para este satélite: ${SATELLITE_IP}/24"
     fi
   fi
 
+  echo "==> Configurando WireGuard en Nodo Satélite (IP ${SATELLITE_IP}/24 -> Master $MASTER_ENDPOINT)"
+
+  # 3. Generación AUTOMÁTICA de claves del satélite (nunca se exige --satellite-key)
+  local sat_priv_file="/etc/wireguard/satellite_private.key"
+  local sat_pub_file="/etc/wireguard/satellite_public.key"
+  local sat_pub=""
+
+  if [[ -f "$sat_priv_file" && -f "$sat_pub_file" ]]; then
+    SATELLITE_PRIVKEY="$(cat "$sat_priv_file")"
+    sat_pub="$(cat "$sat_pub_file")"
+  elif [[ -n "$SATELLITE_PRIVKEY" ]]; then
+    if command -v wg >/dev/null 2>&1; then
+      sat_pub="$(echo "$SATELLITE_PRIVKEY" | wg pubkey)"
+    else
+      sat_pub="$(openssl rand -base64 32)"
+    fi
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      echo "$SATELLITE_PRIVKEY" > "$sat_priv_file"
+      echo "$sat_pub" > "$sat_pub_file"
+      chmod 0600 "$sat_priv_file"
+      chmod 0644 "$sat_pub_file"
+    fi
+  else
+    if command -v wg >/dev/null 2>&1; then
+      SATELLITE_PRIVKEY="$(wg genkey)"
+      sat_pub="$(echo "$SATELLITE_PRIVKEY" | wg pubkey)"
+    else
+      SATELLITE_PRIVKEY="$(openssl rand -base64 32)"
+      sat_pub="$(openssl rand -base64 32)"
+    fi
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      echo "$SATELLITE_PRIVKEY" > "$sat_priv_file"
+      echo "$sat_pub" > "$sat_pub_file"
+      chmod 0600 "$sat_priv_file"
+      chmod 0644 "$sat_pub_file"
+    fi
+  fi
+
+  cat <<SAT_KEY_BANNER
+
+================================================================================
+             WIREGUARD SATÉLITE - CLAVES GENERADAS AUTOMÁTICAMENTE
+================================================================================
+  - Satélite Public Key: ${sat_pub:-"[GENERADA_AUTOMATICAMENTE]"}
+  - Satélite IP:         ${SATELLITE_IP}/24
+  - Master Endpoint:     ${MASTER_ENDPOINT}
+
+  [VINCULACIÓN EN EL SERVIDOR MÁSTER]
+  Si aún no has registrado este satélite en el Máster, ejecuta allí:
+      sudo ./add_satellite.sh ${SATELLITE_NAME:-"$(hostname)"} --pubkey "${sat_pub:-"<PUBKEY>"}" --ip "${SATELLITE_IP}"
+================================================================================
+SAT_KEY_BANNER
+
+  # 4. Obtener clave pública del Master si no fue proporcionada
+  if [[ -z "$MASTER_PUBKEY" ]]; then
+    if [[ -t 0 ]]; then
+      echo -n "Introduce la clave pública del Master (master-key): "
+      read -r MASTER_PUBKEY || true
+    fi
+    if [[ -z "$MASTER_PUBKEY" ]]; then
+      echo "ADVERTENCIA: No se suministró --master-key. Se usará clave temporal."
+      MASTER_PUBKEY="PENDIENTE_DE_CONFIGURAR_MASTER_PUBLIC_KEY"
+    fi
+  fi
+
+  # 5. Generar archivo de configuración wg0.conf
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "[DRY-RUN] Escribir $wg_conf con Address = $SATELLITE_IP/24"
   else
@@ -927,13 +1028,41 @@ EOF
       run_cmd sed -i 's|listen_uri: 127.0.0.1:8080|listen_uri: 0.0.0.0:8080|g' /etc/crowdsec/config.yaml || true
     fi
   elif [[ "$ROLE" == "satellite" ]]; then
+    if [[ -z "$CROWDSEC_PASSWORD" && -t 0 && "$DRY_RUN" -eq 0 ]]; then
+      echo
+      echo "==> Configuración de CrowdSec para Satélite"
+      echo "    Para máxima seguridad (sin contraseñas en el historial de bash ni en 'ps aux'),"
+      echo "    presiona Enter para registrar el satélite y validarlo en el Master."
+      echo -n "    Contraseña LAPI (Enter para validación en Master sin contraseña): "
+      read -r -s input_cs_pwd || true
+      echo
+      if [[ -n "$input_cs_pwd" ]]; then
+        CROWDSEC_PASSWORD="$input_cs_pwd"
+      fi
+    fi
+
     if [[ -n "$CROWDSEC_PASSWORD" ]]; then
       echo "==> Registrando agente CrowdSec en el LAPI del Master (10.10.0.1:8080)"
       if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "[DRY-RUN] cscli lapi register -u http://10.10.0.1:8080 --machine $SATELLITE_NAME --password [OCULTA]"
+        echo "[DRY-RUN] cscli lapi register -u http://10.10.0.1:8080 --machine ${SATELLITE_NAME:-"$(hostname)"} --password [OCULTA]"
       else
-        cscli lapi register -u "http://10.10.0.1:8080" --machine "$SATELLITE_NAME" --password "$CROWDSEC_PASSWORD" || true
+        cscli lapi register -u "http://10.10.0.1:8080" --machine "${SATELLITE_NAME:-"$(hostname)"}" --password "$CROWDSEC_PASSWORD" || true
       fi
+    else
+      echo "==> Registrando agente CrowdSec en el LAPI del Master (10.10.0.1:8080) [Modo Seguro sin contraseñas]"
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DRY-RUN] cscli lapi register -u http://10.10.0.1:8080 --machine ${SATELLITE_NAME:-"$(hostname)"}"
+      else
+        cscli lapi register -u "http://10.10.0.1:8080" --machine "${SATELLITE_NAME:-"$(hostname)"}" || true
+      fi
+      cat <<CS_BANNER
+
+--------------------------------------------------------------------------------
+ [ACCIÓN REQUERIDA EN EL MASTER] Activación de CrowdSec para '${SATELLITE_NAME:-"$(hostname)"}'
+ Ejecuta en el servidor Máster para autorizar este satélite:
+     sudo cscli machines validate "${SATELLITE_NAME:-"$(hostname)"}"
+--------------------------------------------------------------------------------
+CS_BANNER
     fi
   fi
 

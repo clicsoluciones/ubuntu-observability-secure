@@ -152,30 +152,36 @@ sudo ./install.sh --role master --satellites "frontend,backend"
 ```
 
 ### 2. Registrar un Nuevo Satélite en el Máster
-En cualquier momento puedes registrar un nuevo satélite ejecutando en el Máster:
+En cualquier momento puedes registrar un satélite ejecutando en el Máster:
 ```bash
 sudo ./add_satellite.sh frontend
 # O también mediante install.sh:
 sudo ./install.sh --add-satellite frontend
 ```
-Este comando te imprimirá en pantalla el comando exacto con claves criptográficas ya generadas para pegar en el satélite.
+Este comando reserva la IP interna en WireGuard (ej. `10.10.0.2`), imprime las claves y genera el comando seguro para vincular el satélite sin exponer contraseñas en flags de consola.
 
 ### 3. Instalación de un Nodo Satélite (Frontend / Backend)
-En el servidor remoto (Frontend o Backend), clona el repositorio y pega el comando generado por el Máster:
+En el servidor remoto (Frontend o Backend), clona el repositorio y ejecuta el instalador indicando el Máster:
 ```bash
 sudo ./install.sh --role satellite \
   --name "frontend" \
   --master "IP_PUBLICA_DEL_MASTER:51820" \
-  --master-key "CLAVE_PUBLICA_DEL_MASTER" \
-  --satellite-ip "10.10.0.2" \
-  --satellite-key "CLAVE_PRIVADA_DEL_SATELITE" \
-  --crowdsec-password "PASSWORD_GENERADO"
+  --master-key "CLAVE_PUBLICA_DEL_MASTER"
 ```
+
+> **Seguridad y Cero Fuga en Historial:**
+> - **Claves WireGuard:** El satélite genera su propio par de claves criptográficas de forma 100% automática e imprime su Clave Pública en pantalla. La clave privada nunca viaja por la línea de comandos ni por la red.
+> - **Auto-deducción de IP:** El satélite deduce su IP en WireGuard (`10.10.0.2` o la configurada previamente) sin requerir `--satellite-ip`.
+> - **Protección contra fugas en bash history y `ps aux`:** No se pasan contraseñas en flags CLI. El agente de CrowdSec se registra en el LAPI del Máster en estado pendiente, y se activa de forma segura ejecutando en el Máster:
+>   ```bash
+>   sudo cscli machines validate frontend
+>   ```
+
 El satélite:
 1. Establece el túnel WireGuard seguro (`10.10.0.2/24`).
 2. Levanta **Grafana Alloy** enviando logs y métricas directamente a `10.10.0.1:9090` y `10.10.0.1:3100`.
 3. Levanta **CrowdSec y el bouncer nftables** local para cortar ataques de firewall en el satélite.
-4. Omite Grafana, Prometheus y Loki locales para un consumo mínimo de recursos.
+4. Omite Grafana, Prometheus y Loki locales para un consumo mínimo de recursos (aprox. 120MB RAM).
 
 ---
 
