@@ -170,6 +170,7 @@ sudo ./install.sh --role satellite \
 ```
 
 > **Seguridad y Cero Fuga en Historial:**
+> - **Clave Pública del Máster:** La clave pasada en `--master-key` es la clave pública Curve25519 del Máster (diseñada por definición para ser pública y visible, no un secreto privado). Si prefieres no pasarla por consola, puedes omitir `--master-key` y el instalador te la solicitará en pantalla de forma interactiva.
 > - **Claves WireGuard:** El satélite genera su propio par de claves criptográficas de forma 100% automática e imprime su Clave Pública en pantalla. La clave privada nunca viaja por la línea de comandos ni por la red.
 > - **Auto-deducción de IP:** El satélite deduce su IP en WireGuard (`10.10.0.2` o la configurada previamente) sin requerir `--satellite-ip`.
 > - **Protección contra fugas en bash history y `ps aux`:** No se pasan contraseñas en flags CLI. El agente de CrowdSec se registra en el LAPI del Máster en estado pendiente, y se activa de forma segura ejecutando en el Máster:
