@@ -861,6 +861,7 @@ if [[ "$ROLE" != "satellite" ]]; then
     fi
   fi
 
+  run_cmd install -d -o prometheus -g prometheus -m 0750 /var/lib/prometheus /var/lib/prometheus/metrics2
   run_cmd install -d -o prometheus -g prometheus -m 0750 /etc/prometheus/rules
   run_cmd install -m 0644 "$SCRIPT_DIR/prometheus/prometheus.yml" /etc/prometheus/prometheus.yml
   run_cmd install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml
@@ -877,7 +878,7 @@ if [[ "$ROLE" != "satellite" ]]; then
 ARGS="--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/metrics2 --storage.tsdb.retention.time=15d --web.listen-address=${prom_listen_addr} --web.enable-remote-write-receiver"
 EOF
   fi
-  run_cmd chown -R prometheus:prometheus /etc/prometheus
+  run_cmd chown -R prometheus:prometheus /var/lib/prometheus /etc/prometheus
   run_cmd chmod 0640 /etc/prometheus/prometheus.yml /etc/prometheus/rules/host-alerts.yml
 fi
 

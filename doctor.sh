@@ -293,6 +293,24 @@ if [[ "$NODE_ROLE" != "satellite" ]]; then
     fi
   fi
 
+  # Permisos de almacenamiento en /var/lib/prometheus
+  if [[ -d /var/lib/prometheus ]]; then
+    install -d -o prometheus -g prometheus -m 0750 /var/lib/prometheus /var/lib/prometheus/metrics2 2>/dev/null || true
+    bad_prom_files="$(find /var/lib/prometheus \( ! -user prometheus -o ! -group prometheus \) -print -quit 2>/dev/null || true)"
+    if [[ -n "$bad_prom_files" ]]; then
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "Directorios o archivos en /var/lib/prometheus con propietario incorrecto (root en vez de prometheus)"
+      else
+        chown -R prometheus:prometheus /var/lib/prometheus
+        chmod 0750 /var/lib/prometheus /var/lib/prometheus/metrics2 2>/dev/null || true
+        NEED_PROM_RESTART=1
+        report_fixed "Corregida propiedad recursiva prometheus:prometheus en /var/lib/prometheus"
+      fi
+    else
+      report_pass "Almacenamiento /var/lib/prometheus pertenece íntegramente a prometheus:prometheus"
+    fi
+  fi
+
   # Sincronizar /etc/loki/config.yml con el repositorio si falta o si no tiene instance_addr configurado
   if [[ -f "$SCRIPT_DIR/loki/config.yml" ]]; then
     if [[ ! -f /etc/loki/config.yml ]] || ! grep -q 'instance_addr' /etc/loki/config.yml 2>/dev/null; then
