@@ -999,7 +999,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"ssh_auth\", host=~\"$host\"} |= \"Failed password\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"Failed password\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -1068,7 +1068,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"ssh_auth\", host=~\"$host\"} |= \"Accepted \"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"Accepted \"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -1141,7 +1141,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"ssh_auth\", host=~\"$host\"} |= \"sudo:\" |= \"authentication failure\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"sudo:\" |= \"authentication failure\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -1434,7 +1434,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(rate({job=\"nginx_access\", host=~\"$host\"}[1m])) or vector(0)",
+          "expr": "sum(rate({job=\"nginx_access\"}[1m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -1507,7 +1507,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "(sum(rate({job=\"nginx_access\", host=~\"$host\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
+          "expr": "(sum(rate({job=\"nginx_access\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -1580,7 +1580,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -1649,7 +1649,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -1929,7 +1929,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(rate({job=\"nginx_access\", host=~\"$host\"}[1m])) or vector(0)",
+          "expr": "sum(rate({job=\"nginx_access\"}[1m])) or vector(0)",
           "legendFormat": "HTTP req/s",
           "queryType": "range",
           "refId": "A"
@@ -1940,7 +1940,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "(sum(rate({job=\"nginx_access\", host=~\"$host\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
+          "expr": "(sum(rate({job=\"nginx_access\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
           "legendFormat": "Ráfagas 403/404 (/min)",
           "queryType": "range",
           "refId": "B"
@@ -1951,7 +1951,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
           "legendFormat": "Rutas Críticas .env/.git (5m)",
           "queryType": "range",
           "refId": "C"
@@ -1962,7 +1962,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
           "legendFormat": "Escáneres sqlmap/nikto (5m)",
           "queryType": "range",
           "refId": "D"
@@ -2352,8 +2352,8 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by(job, host) (count_over_time({host=~\"$host\"}[5m]))",
-          "legendFormat": "{{host}} • {{job}}",
+          "expr": "sum by(job) (count_over_time({job=~\".+\"}[5m]))",
+          "legendFormat": "{{job}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -2403,7 +2403,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"ssh_auth\", host=~\"$host\"}",
+          "expr": "{job=\"ssh_auth\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -2440,7 +2440,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"ufw_firewall\", host=~\"$host\"}",
+          "expr": "{job=\"ufw_firewall\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -2490,7 +2490,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"crowdsec_ips\", host=~\"$host\"}",
+          "expr": "{job=\"crowdsec_ips\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -2540,7 +2540,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=~\"nginx_error|nginx_access\", host=~\"$host\"}",
+          "expr": "{job=~\"nginx_error|nginx_access\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -2577,7 +2577,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"docker_containers\", host=~\"$host\"}",
+          "expr": "{job=\"docker_containers\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -2614,7 +2614,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"systemd_journal\", host=~\"$host\"}",
+          "expr": "{job=\"systemd_journal\"}",
           "queryType": "range",
           "refId": "A"
         }
