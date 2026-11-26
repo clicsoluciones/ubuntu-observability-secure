@@ -101,11 +101,11 @@ prometheus.remote_write "local_prom" {
 // Missing files or patterns are simply not tailed until created.
 local.file_match "security_and_web_logs" {
 	path_targets = [
-		{__path__ = "/var/log/auth.log", job = "ssh_auth", host = constants.hostname},
-		{__path__ = "/var/log/ufw.log", job = "ufw_firewall", host = constants.hostname},
-		{__path__ = "/var/log/crowdsec.log", job = "crowdsec_ips", host = constants.hostname},
-		{__path__ = "/var/log/nginx/*access*.log", job = "nginx_access", host = constants.hostname},
-		{__path__ = "/var/log/nginx/*error*.log", job = "nginx_error", host = constants.hostname},
+		{__path__ = "/var/log/auth.log", job = "ssh_auth", host = constants.hostname, instance = constants.hostname},
+		{__path__ = "/var/log/ufw.log", job = "ufw_firewall", host = constants.hostname, instance = constants.hostname},
+		{__path__ = "/var/log/crowdsec.log", job = "crowdsec_ips", host = constants.hostname, instance = constants.hostname},
+		{__path__ = "/var/log/nginx/*access*.log", job = "nginx_access", host = constants.hostname, instance = constants.hostname},
+		{__path__ = "/var/log/nginx/*error*.log", job = "nginx_error", host = constants.hostname, instance = constants.hostname},
 	]
 }
 
@@ -138,8 +138,9 @@ loki.source.docker "docker_apps" {
 	host       = "unix:///var/run/docker.sock"
 	targets    = discovery.relabel.docker_logs.output
 	labels     = {
-		job  = "docker_containers",
-		host = constants.hostname,
+		job      = "docker_containers",
+		host     = constants.hostname,
+		instance = constants.hostname,
 	}
 	forward_to = [loki.write.local_loki.receiver]
 }
@@ -147,8 +148,9 @@ loki.source.docker "docker_apps" {
 loki.source.journal "systemd_journal" {
 	forward_to = [loki.write.local_loki.receiver]
 	labels     = {
-		job  = "systemd_journal",
-		host = constants.hostname,
+		job      = "systemd_journal",
+		host     = constants.hostname,
+		instance = constants.hostname,
 	}
 }
 
