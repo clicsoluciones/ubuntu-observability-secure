@@ -748,6 +748,9 @@ elif [[ "$NODE_ROLE" == "master" ]]; then
   echo -e "${C_BOLD}[WG] Verificando Servidor WireGuard...${C_RESET}"
   if command -v wg >/dev/null 2>&1 && wg show wg0 >/dev/null 2>&1; then
     report_pass "Servidor WireGuard wg0 está activo y escuchando"
+    if [[ -f /etc/wireguard/server_public.key ]]; then
+      report_pass "Clave pública del Máster (/etc/wireguard/server_public.key): $(cat /etc/wireguard/server_public.key)"
+    fi
   else
     report_warn "Servidor WireGuard wg0 no está activo actualmente"
   fi

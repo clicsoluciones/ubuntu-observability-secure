@@ -1311,9 +1311,20 @@ Log auditoria: $LOG_FILE
 MASTER_DONE
 
   if [[ "$ROLE" == "master" ]]; then
+    master_pub=""
+    if [[ -f /etc/wireguard/server_public.key ]]; then
+      master_pub="$(cat /etc/wireguard/server_public.key 2>/dev/null || true)"
+    elif command -v wg >/dev/null 2>&1 && wg show wg0 public-key >/dev/null 2>&1; then
+      master_pub="$(wg show wg0 public-key 2>/dev/null || true)"
+    fi
+    pub_ip="$(curl -s4 --connect-timeout 2 https://ifconfig.me 2>/dev/null || ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -n1 || echo "IP_PUBLICA_DEL_MASTER")"
+
     cat <<WG_INFO
 
- [3] Red Distribuida WireGuard:
+ [3] Red Distribuida WireGuard (Master):
+   - Master Public Key: ${master_pub:-"(consultar con: sudo cat /etc/wireguard/server_public.key)"}
+   - Archivo de Clave:  /etc/wireguard/server_public.key
+   - Endpoint sugerido: ${pub_ip}:${WG_PORT}
    - IP Privada Master: 10.10.0.1/24
    - Puerto UDP:        $WG_PORT
    - Para registrar satelites: sudo ./add_satellite.sh <NOMBRE_SATELITE>
