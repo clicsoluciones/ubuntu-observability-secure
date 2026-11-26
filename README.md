@@ -94,12 +94,16 @@ flowchart LR
 ## Requisitos y Pre-flight
 
 El instalador efectúa verificaciones previas automatizadas antes de alterar el sistema:
-1. **Sistema Operativo**: Ubuntu Server 22.04 LTS (Jammy) o 24.04 LTS (Noble).
+1. **Sistema Operativo**: Ubuntu Server 20.04, 22.04 LTS (Jammy) o 24.04 LTS (Noble).
 2. **Permisos**: Privilegios de superusuario (`root` o `sudo`).
 3. **Init System**: systemd activo.
 4. **Arquitectura**: amd64 (`x86_64`) o arm64 (`aarch64`).
-5. **Memoria RAM**: Mínimo 2 GB (~1800 MB detectados libres/totales recomendados). Si se detecta menor capacidad, el script advierte y se detiene (se puede forzar con `--skip-preflight`).
-6. **Espacio en disco**: Mínimo 3 GB de espacio libre en `/var` para TSDB de Prometheus y chunks de Loki.
+5. **Memoria RAM**:
+   - Modo **Master** o **Standalone**: Mínimo 2 GB (~1800 MB recomendados) para la suite completa con TSDB locales (Grafana, Prometheus, Loki).
+   - Modo **Satellite**: Mínimo 512 MB (~450 MB recomendados) ya que solo ejecuta Alloy y CrowdSec (consumo ~80MB).
+6. **Espacio en disco**:
+   - Modo **Master** o **Standalone**: Mínimo 3 GB libres en `/var` para TSDB de Prometheus y chunks de Loki.
+   - Modo **Satellite**: Mínimo 500 MB libres (sin almacenamiento de base de datos local).
 7. **Conectividad a Internet**: Verificación HTTP/curl contra `archive.ubuntu.com` y `apt.grafana.com`.
 
 ---
@@ -252,7 +256,7 @@ sudo ./setup_alerts.sh --telegram '123456:ABC-DEF...' '-100123456789'
 ```
 
 ### 9. Diagnóstico y Autorreparación (`doctor.sh`)
-Si algún servicio (`loki`, `alloy`, `prometheus`, `grafana-server`) presenta fallos de arranque tras una actualización o si el panel **"Logs de Autenticación SSH y Sudo (`/var/log/auth.log`)"** muestra `No data`, ejecuta la herramienta de diagnóstico y autorreparación:
+La herramienta de diagnóstico detecta automáticamente si el servidor actúa como **Master**, **Satellite** o **Standalone** y adapta sus comprobaciones en consecuencia:
 ```bash
 chmod +x doctor.sh
 sudo ./doctor.sh
@@ -261,11 +265,11 @@ sudo ./doctor.sh
 sudo ./doctor.sh --check-only
 ```
 `doctor.sh` verifica y corrige automáticamente:
-- Propiedad recursiva `loki:loki` en `/var/lib/loki` (`chunks`, `rules`, `compactor`) y permisos legibles en `/etc/loki/config.yml` y `/etc/alloy/config.alloy`.
-- Grupos suplementarios de Alloy (`adm`, `systemd-journal` y `docker` si Docker está instalado) mediante drop-in de systemd, otorgando lectura a `/var/log/auth.log`, `/var/log/nginx/*.log` y `/var/run/docker.sock`.
-- Sincronización automática de `alloy/config.alloy` y del dashboard de Grafana para incluir el panel **"Logs de Aplicaciones Docker (Acceso stdout & Errores stderr)"**.
-- Reinicio ordenado (`systemctl reset-failed`) esperando a que Loki responda en `:3100/ready` antes de iniciar Alloy.
-- Verificación de ingesta real en Prometheus y Loki (`{job="ssh_auth"}`), reseteando el caché de posiciones de Alloy si leyó el archivo cuando Loki aún no estaba disponible.
+- **Detección de Rol y Túnel WireGuard**: Si es un satélite, valida el estado de la interfaz `wg0`, prueba el enlace ICMP/ping contra el Máster (`10.10.0.1`) y confirma que los endpoints de Prometheus (`:9090`) y Loki (`:3100`) del Máster estén respondiendo correctamente.
+- **Aislamiento de Servicios Omitidos**: En los satélites, omite comprobar Prometheus, Loki o Grafana locales, evitando falsos positivos.
+- **Permisos de Logs y Grupos de Alloy**: Verifica grupos suplementarios (`adm`, `systemd-journal`, `docker`) para la lectura de `/var/log/auth.log`, Nginx y Docker sockets.
+- **Salud de Base de Datos y Permisos**: Propiedad `loki:loki` en chunks y compactor, permisos de reglas y arranque ordenado de servicios.
+- **Ingesta Real de Telemetría**: Comprueba que Alloy esté entregando métricas a Prometheus y flujos de logs `{job="ssh_auth"}` a Loki (reseteando automáticamente el caché de posiciones si quedaron bloqueados).
 
 ---
 
@@ -285,9 +289,11 @@ ssh -L 3001:127.0.0.1:3001 usuario@IP_DEL_SERVIDOR
 Abre en tu navegador `http://localhost:3000` (o `http://localhost:3001`) con el usuario `admin`. 
 
 Al iniciar sesión, **se abrirá automáticamente en la pantalla de inicio (Home)** el panel preconfigurado **"Ubuntu Observabilidad & Seguridad Activa"** (también accesible desde el menú lateral **Dashboards** > carpeta **Observabilidad y Seguridad**), el cual incluye:
-1. **Estado General y Recursos**: Gauges en tiempo real de CPU, Memoria RAM, Disco Raíz (`/`), saturación de tabla Conntrack, IPs bloqueadas activamente en CrowdSec e intentos fallidos de SSH en los últimos 15 minutos.
-2. **Rendimiento del Host y Red**: Series temporales de CPU/RAM, tráfico de segmentos TCP In/Out + SYN Cookies enviadas, saturación I/O de disco y estado en vivo de servicios críticos (`ssh`, `nginx`, `crowdsec`, `prometheus`, `loki`, `alloy`, `grafana-server`).
-3. **Seguridad Activa, SSH, Firewall y Web (Loki Logs)**: Histograma de volumen de eventos por fuente y visores de logs en vivo para autenticación SSH/sudo (`/var/log/auth.log`), firewall UFW + errores de Nginx, y accesos web + `systemd-journal`.
+1. **Vista Global de la Flota (Tabla Interactiva Multi-Host)**: Muestra en tiempo real todos los nodos conectados (Hostname, % CPU, % RAM, % Disco). **Al hacer clic sobre el nombre de un servidor en la tabla, el dashboard actualiza automáticamente la variable `$host`, mostrando exclusivamente las métricas y logs de esa máquina.**
+2. **Selector Dinámico `$host`**: Menú desplegable superior que permite alternar entre ver la flota consolidada (`All`) o filtrar por un satélite o máster específico.
+3. **Estado General y Recursos**: Gauges en tiempo real de CPU, Memoria RAM, Disco Raíz (`/`), saturación de tabla Conntrack, IPs bloqueadas activamente en CrowdSec e intentos fallidos de SSH en los últimos 15 minutos.
+4. **Rendimiento del Host y Red**: Series temporales de CPU/RAM, tráfico de segmentos TCP In/Out + SYN Cookies enviadas, saturación I/O de disco y estado en vivo de servicios críticos (`ssh`, `nginx`, `crowdsec`, `prometheus`, `loki`, `alloy`, `grafana-server`).
+5. **Seguridad Activa, SSH, Firewall y Web (Loki Logs)**: Histograma de volumen de eventos por fuente y visores de logs en vivo para autenticación SSH/sudo (`/var/log/auth.log`), firewall UFW + errores de Nginx, y accesos web + `systemd-journal`.
 
 > [!IMPORTANT]
 > **Gestión de credenciales y aislamiento de servicios:**
