@@ -62,6 +62,17 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# Deteccion de rol de nodo (standalone, master, satellite)
+NODE_ROLE="standalone"
+if [[ -f /etc/wireguard/wg0.conf ]]; then
+  if grep -q "10\.10\.0\.1/24" /etc/wireguard/wg0.conf 2>/dev/null; then
+    NODE_ROLE="master"
+  elif grep -q "10\.10\.0\." /etc/wireguard/wg0.conf 2>/dev/null; then
+    NODE_ROLE="satellite"
+  fi
+fi
+
+
 # Auto-detect custom Grafana port from drop-in if present
 if [[ -f /etc/systemd/system/grafana-server.service.d/observability.conf ]]; then
   detected_port="$(awk -F= '/GF_SERVER_HTTP_PORT=/ {gsub(/"/, "", $2); print $2}' /etc/systemd/system/grafana-server.service.d/observability.conf | tail -n1 || true)"
@@ -133,6 +144,7 @@ NEED_GRAFANA_RESTART=0
 
 echo -e "${C_BOLD}================================================================================${C_RESET}"
 echo -e "${C_BOLD}       DOCTOR DE OBSERVABILIDAD Y SEGURIDAD ACTIVA (DIAGNÓSTICO Y REPARACIÓN)   ${C_RESET}"
+echo -e "       Rol del nodo: [ ${NODE_ROLE^^} ]"
 echo -e "${C_BOLD}================================================================================${C_RESET}"
 if [[ "$CHECK_ONLY" -eq 1 ]]; then
   echo "Modo: SOLO LECTURA (--check-only)"
@@ -591,44 +603,47 @@ if [[ "$CHECK_ONLY" -eq 0 ]]; then
   fi
 fi
 
-# Comprobar y levantar Prometheus y Loki primero
-for svc in prometheus "$LOKI_SERVICE"; do
-  if systemctl is-active --quiet "$svc" 2>/dev/null; then
-    report_pass "Servicio '$svc' está activo (running)"
-  else
-    if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "Servicio '$svc' NO está activo (estado: $(systemctl is-active "$svc" 2>/dev/null || echo 'inactive'))"
+if [[ "$NODE_ROLE" == "satellite" ]]; then
+  report_pass "Modo Satélite activo: Prometheus, Loki y Grafana residen en el Máster"
+else
+  # Comprobar y levantar Prometheus y Loki primero en Master o Standalone
+  for svc in prometheus "$LOKI_SERVICE"; do
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+      report_pass "Servicio '$svc' está activo (running)"
     else
-      systemctl reset-failed "$svc" 2>/dev/null || true
-      systemctl enable --now "$svc" 2>/dev/null || true
-      # Usar timeout de 5 segundos con timeout de GNU coreutils para que systemctl JAMAS congele el script
-      timeout 5s systemctl restart "$svc" 2>/dev/null || true
-      sleep 1
-      if systemctl is-active --quiet "$svc" 2>/dev/null; then
-        report_fixed "Servicio '$svc' recuperado y activo"
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "Servicio '$svc' NO está activo (estado: $(systemctl is-active "$svc" 2>/dev/null || echo 'inactive'))"
       else
-        report_fail "Servicio '$svc' continúa fallando tras intento de reinicio"
-        echo "  [DIAGNÓSTICO] Últimas líneas de journalctl para $svc:"
-        journalctl -u "$svc" -n 6 --no-pager 2>/dev/null | sed 's/^/    /' || true
+        systemctl reset-failed "$svc" 2>/dev/null || true
+        systemctl enable --now "$svc" 2>/dev/null || true
+        timeout 5s systemctl restart "$svc" 2>/dev/null || true
+        sleep 1
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+          report_fixed "Servicio '$svc' recuperado y activo"
+        else
+          report_fail "Servicio '$svc' continúa fallando tras intento de reinicio"
+          echo "  [DIAGNÓSTICO] Últimas líneas de journalctl para $svc:"
+          journalctl -u "$svc" -n 6 --no-pager 2>/dev/null | sed 's/^/    /' || true
+        fi
       fi
     fi
-  fi
-done
-
-# Esperar a que Loki responda en :3100/ready antes de evaluar/reiniciar Alloy
-if systemctl is-active --quiet "$LOKI_SERVICE" 2>/dev/null; then
-  loki_ready=0
-  for _ in {1..8}; do
-    if curl -fsSL --connect-timeout 1 --max-time 2 "http://127.0.0.1:3100/ready" >/dev/null 2>&1; then
-      loki_ready=1
-      break
-    fi
-    sleep 1
   done
-  if [[ "$loki_ready" -eq 1 ]]; then
-    report_pass "Endpoint de salud de Loki (127.0.0.1:3100/ready) responde READY"
-  else
-    report_warn "Loki está activo pero 127.0.0.1:3100/ready aún está inicializando"
+
+  # Esperar a que Loki responda en :3100/ready antes de evaluar/reiniciar Alloy
+  if systemctl is-active --quiet "$LOKI_SERVICE" 2>/dev/null; then
+    loki_ready=0
+    for _ in {1..8}; do
+      if curl -fsSL --connect-timeout 1 --max-time 2 "http://127.0.0.1:3100/ready" >/dev/null 2>&1; then
+        loki_ready=1
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$loki_ready" -eq 1 ]]; then
+      report_pass "Endpoint de salud de Loki (127.0.0.1:3100/ready) responde READY"
+    else
+      report_warn "Loki está activo pero 127.0.0.1:3100/ready aún está inicializando"
+    fi
   fi
 fi
 
@@ -644,7 +659,13 @@ if [[ "$NEED_GRAFANA_RESTART" -eq 1 && "$CHECK_ONLY" -eq 0 ]]; then
   sleep 1
 fi
 
-for svc in alloy grafana-server crowdsec crowdsec-firewall-bouncer; do
+local_check_svcs=("alloy" "crowdsec" "crowdsec-firewall-bouncer")
+if [[ "$NODE_ROLE" != "satellite" ]]; then
+  local_check_svcs+=("grafana-server")
+else
+  local_check_svcs+=("wg-quick@wg0")
+fi
+for svc in "${local_check_svcs[@]}"; do
   if ! systemctl list-unit-files "${svc}.service" >/dev/null 2>&1; then
     report_warn "Servicio opcional '$svc' no está instalado en este sistema"
     continue
@@ -694,6 +715,44 @@ if systemctl list-unit-files auditd.service >/dev/null 2>&1; then
 fi
 
 # ------------------------------------------------------------------------------
+
+# Verificacion de enlace WireGuard
+if [[ "$NODE_ROLE" == "satellite" ]]; then
+  echo
+  echo -e "${C_BOLD}[WG] Verificando túnel WireGuard con el Máster (10.10.0.1)...${C_RESET}"
+  if command -v wg >/dev/null 2>&1 && wg show wg0 >/dev/null 2>&1; then
+    report_pass "Interfaz WireGuard wg0 está activa"
+  else
+    report_fail "Interfaz WireGuard wg0 NO está activa"
+  fi
+
+  if ping -c 1 -W 2 10.10.0.1 >/dev/null 2>&1; then
+    report_pass "Enlace IP hacia el Máster (10.10.0.1) responde PING"
+  else
+    report_warn "No hay respuesta PING desde 10.10.0.1 (comprueba endpoint de wg0 o firewall del Máster)"
+  fi
+
+  if curl -fsSL --connect-timeout 2 --max-time 3 "http://10.10.0.1:9090/-/healthy" >/dev/null 2>&1; then
+    report_pass "Prometheus en Máster (10.10.0.1:9090) alcanzable"
+  else
+    report_warn "Prometheus en Máster (10.10.0.1:9090) no responde aún"
+  fi
+
+  if curl -fsSL --connect-timeout 2 --max-time 3 "http://10.10.0.1:3100/ready" >/dev/null 2>&1; then
+    report_pass "Loki en Máster (10.10.0.1:3100) alcanzable"
+  else
+    report_warn "Loki en Máster (10.10.0.1:3100) no responde aún"
+  fi
+elif [[ "$NODE_ROLE" == "master" ]]; then
+  echo
+  echo -e "${C_BOLD}[WG] Verificando Servidor WireGuard...${C_RESET}"
+  if command -v wg >/dev/null 2>&1 && wg show wg0 >/dev/null 2>&1; then
+    report_pass "Servidor WireGuard wg0 está activo y escuchando"
+  else
+    report_warn "Servidor WireGuard wg0 no está activo actualmente"
+  fi
+fi
+
 # 4. VERIFICACIÓN DE PUERTOS EN LOOPBACK
 # ------------------------------------------------------------------------------
 echo
@@ -725,11 +784,19 @@ for _ in {1..5}; do
   sleep 1
 done
 
-for port_pair in "9090:Prometheus" "3100:Loki" "12345:Alloy" "${GRAFANA_PORT}:Grafana"; do
+if [[ "$NODE_ROLE" == "satellite" ]]; then
+  ports_to_check=("12345:Alloy")
+else
+  ports_to_check=("9090:Prometheus" "3100:Loki" "12345:Alloy" "${GRAFANA_PORT}:Grafana")
+fi
+
+for port_pair in "${ports_to_check[@]}"; do
   p="${port_pair%%:*}"
   name="${port_pair#*:}"
   if echo "$ss_out" | grep -qE "(127\.0\.0\.1|\[::1\]):${p}\b"; then
     report_pass "$name escuchando de forma segura en loopback (:${p})"
+  elif [[ "$NODE_ROLE" == "master" && ( "$p" == "9090" || "$p" == "3100" ) ]] && echo "$ss_out" | grep -qE ":${p}\b"; then
+    report_pass "$name escuchando para ingesta distribuida por WireGuard (:${p})"
   elif echo "$ss_out" | grep -qE ":${p}\b"; then
     report_warn "$name escucha en el puerto :${p} pero verifica que no esté expuesto en 0.0.0.0"
   else
@@ -740,8 +807,17 @@ done
 # ------------------------------------------------------------------------------
 # 5. VERIFICACIÓN DE INGESTA EN VIVO (PROMETHEUS Y LOKI /var/log/auth.log)
 # ------------------------------------------------------------------------------
-echo
-echo -e "${C_BOLD}[5/5] Verificando ingesta real de métricas (Prometheus) y logs (Loki)...${C_RESET}"
+if [[ "$NODE_ROLE" == "satellite" ]]; then
+  echo
+  echo -e "${C_BOLD}[5/5] Verificando envío de telemetría hacia el Máster (10.10.0.1)...${C_RESET}"
+  if pgrep -x alloy >/dev/null 2>&1; then
+    report_pass "Proceso Alloy activo recolectando y empujando telemetría al Máster"
+  else
+    report_fail "Proceso Alloy NO se encuentra en ejecución"
+  fi
+else
+  echo
+  echo -e "${C_BOLD}[5/5] Verificando ingesta real de métricas (Prometheus) y logs (Loki)...${C_RESET}"
 
 # 5.1 Prometheus metrics check
 prom_up="$(curl -fsSL --connect-timeout 2 --max-time 4 "http://127.0.0.1:9090/api/v1/query?query=node_memory_MemTotal_bytes" 2>/dev/null || true)"
@@ -830,6 +906,8 @@ if [[ -S /var/run/docker.sock ]]; then
   else
     report_warn "El socket /var/run/docker.sock existe pero el proceso 'alloy' requiere reinicio o permisos de grupo 'docker'"
   fi
+fi
+
 fi
 
 # ------------------------------------------------------------------------------

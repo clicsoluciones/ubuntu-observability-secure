@@ -24,8 +24,208 @@
     {
       "collapsed": false,
       "gridPos": {
+        "h": 1,
+        "w": 24,
         "x": 0,
-        "y": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "Vista Global de la Flota (Haz clic en un host para filtrar)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Estado general de todos los nodos de la flota (Máster y Satélites)",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "links": [
+            {
+              "title": "Ver Servidor: ${__data.fields.instance}",
+              "url": "/d/${__dashboard.uid}/${__dashboard.slug}?var-host=${__data.fields.instance}"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Uso CPU %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Uso RAM %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Uso Disco %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 101,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "instance"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Uso CPU %",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Uso RAM %",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) * 100",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Uso Disco %",
+          "refId": "C"
+        }
+      ],
+      "title": "Nodos Conectados en la Red",
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "instance",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "Value #A": "Uso CPU %",
+              "Value #B": "Uso RAM %",
+              "Value #C": "Uso Disco %",
+              "instance": "Servidor / Host"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 7,
         "w": 24,
         "h": 1
       },
@@ -71,7 +271,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 1,
+        "y": 8,
         "w": 6,
         "h": 5
       },
@@ -99,7 +299,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\", instance=~\"$host\"}[5m])) * 100)",
           "legendFormat": "CPU",
           "range": true,
           "refId": "A"
@@ -145,7 +345,7 @@
       },
       "gridPos": {
         "x": 6,
-        "y": 1,
+        "y": 8,
         "w": 6,
         "h": 5
       },
@@ -173,7 +373,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "expr": "(1 - (node_memory_MemAvailable_bytes{instance=~\"$host\"} / node_memory_MemTotal_bytes{instance=~\"$host\"})) * 100",
           "legendFormat": "RAM",
           "range": true,
           "refId": "A"
@@ -219,7 +419,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 1,
+        "y": 8,
         "w": 6,
         "h": 5
       },
@@ -247,13 +447,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) * 100",
+          "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\", instance=~\"$host\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\", instance=~\"$host\"})) * 100",
           "legendFormat": "Disco /",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "[3] Almacenamiento Ra\u00edz Usado % (Umbral >85%)",
+      "title": "[3] Almacenamiento Raíz Usado % (Umbral >85%)",
       "type": "gauge"
     },
     {
@@ -294,7 +494,7 @@
       },
       "gridPos": {
         "x": 18,
-        "y": 1,
+        "y": 8,
         "w": 6,
         "h": 5
       },
@@ -322,7 +522,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(rate(node_disk_io_time_seconds_total[5m]) * 100)",
+          "expr": "max(rate(node_disk_io_time_seconds_total{instance=~\"$host\"}[5m]) * 100)",
           "legendFormat": "I/O Disco Max %",
           "range": true,
           "refId": "A"
@@ -347,7 +547,7 @@
                 "0": {
                   "color": "red",
                   "index": 1,
-                  "text": "CA\u00cdDO"
+                  "text": "CAÍDO"
                 },
                 "1": {
                   "color": "green",
@@ -376,7 +576,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 13,
         "w": 12,
         "h": 7
       },
@@ -405,13 +605,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_systemd_unit_state{name=~\"(ssh|sshd|nginx|crowdsec|prometheus|loki|loki-server|alloy|grafana-server)\\\\.service\",state=\"active\"}",
+          "expr": "node_systemd_unit_state{name=~\"(ssh|sshd|nginx|crowdsec|prometheus|loki|loki-server|alloy|grafana-server)\\\\.service\",state=\"active\", instance=~\"$host\"}",
           "legendFormat": "{{name}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "[5] Estado Servicios Cr\u00edticos systemd (ACTIVO / CA\u00cdDO)",
+      "title": "[5] Estado Servicios Críticos systemd (ACTIVO / CAÍDO)",
       "type": "stat"
     },
     {
@@ -474,7 +674,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 6,
+        "y": 13,
         "w": 12,
         "h": 7
       },
@@ -502,7 +702,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\", instance=~\"$host\"}[5m])) * 100)",
           "legendFormat": "CPU Uso %",
           "range": true,
           "refId": "A"
@@ -513,7 +713,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "expr": "(1 - (node_memory_MemAvailable_bytes{instance=~\"$host\"} / node_memory_MemTotal_bytes{instance=~\"$host\"})) * 100",
           "legendFormat": "RAM Usada %",
           "range": true,
           "refId": "B"
@@ -524,7 +724,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(rate(node_disk_io_time_seconds_total[5m]) * 100)",
+          "expr": "max(rate(node_disk_io_time_seconds_total{instance=~\"$host\"}[5m]) * 100)",
           "legendFormat": "I/O Disco Max %",
           "range": true,
           "refId": "C"
@@ -591,7 +791,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 20,
         "w": 12,
         "h": 11
       },
@@ -618,7 +818,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "topk(10, namedprocess_namegroup_memory_bytes{memtype=\"resident\"})",
+          "expr": "topk(10, namedprocess_namegroup_memory_bytes{memtype=\"resident\", instance=~\"$host\"})",
           "legendFormat": "{{groupname}}",
           "range": true,
           "refId": "A"
@@ -685,7 +885,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 13,
+        "y": 20,
         "w": 12,
         "h": 11
       },
@@ -712,7 +912,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "topk(10, rate(namedprocess_namegroup_cpu_seconds_total[2m]))",
+          "expr": "topk(10, rate(namedprocess_namegroup_cpu_seconds_total{instance=~\"$host\"}[2m]))",
           "legendFormat": "{{groupname}}",
           "range": true,
           "refId": "A"
@@ -725,7 +925,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 31,
         "w": 24,
         "h": 1
       },
@@ -770,7 +970,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -799,7 +999,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"Failed password\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"ssh_auth\", host=~\"$host\"} |= \"Failed password\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -839,7 +1039,7 @@
       },
       "gridPos": {
         "x": 4,
-        "y": 25,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -868,7 +1068,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"Accepted \"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"ssh_auth\", host=~\"$host\"} |= \"Accepted \"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -912,7 +1112,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 25,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -941,7 +1141,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"ssh_auth\"} |= \"sudo:\" |= \"authentication failure\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"ssh_auth\", host=~\"$host\"} |= \"sudo:\" |= \"authentication failure\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
@@ -981,7 +1181,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 25,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -1010,7 +1210,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_netstat_TcpExt_SyncookiesSent[1m])",
+          "expr": "rate(node_netstat_TcpExt_SyncookiesSent{instance=~\"$host\"}[1m])",
           "legendFormat": "SYN Cookies/s",
           "range": true,
           "refId": "A"
@@ -1055,7 +1255,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 25,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -1084,13 +1284,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_netstat_Tcp_InSegs[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs[2m]), 1)",
+          "expr": "rate(node_netstat_Tcp_InSegs{instance=~\"$host\"}[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs{instance=~\"$host\"}[2m]), 1)",
           "legendFormat": "Ratio In/Out",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "[10] DDoS L4: Ratio Asimetr\u00eda TCP",
+      "title": "[10] DDoS L4: Ratio Asimetría TCP",
       "type": "stat"
     },
     {
@@ -1131,7 +1331,7 @@
       },
       "gridPos": {
         "x": 20,
-        "y": 25,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -1160,7 +1360,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(node_nf_conntrack_entries / node_nf_conntrack_entries_limit) * 100",
+          "expr": "(node_nf_conntrack_entries{instance=~\"$host\"} / node_nf_conntrack_entries_limit{instance=~\"$host\"}) * 100",
           "legendFormat": "Conntrack %",
           "range": true,
           "refId": "A"
@@ -1205,7 +1405,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 29,
+        "y": 36,
         "w": 5,
         "h": 4
       },
@@ -1234,12 +1434,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(rate({job=\"nginx_access\"}[1m])) or vector(0)",
+          "expr": "sum(rate({job=\"nginx_access\", host=~\"$host\"}[1m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "[12] DDoS L7: Tr\u00e1fico HTTP (req/s)",
+      "title": "[12] DDoS L7: Tráfico HTTP (req/s)",
       "type": "stat"
     },
     {
@@ -1278,7 +1478,7 @@
       },
       "gridPos": {
         "x": 5,
-        "y": 29,
+        "y": 36,
         "w": 5,
         "h": 4
       },
@@ -1307,12 +1507,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "(sum(rate({job=\"nginx_access\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
+          "expr": "(sum(rate({job=\"nginx_access\", host=~\"$host\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "[13] Bot Scan: R\u00e1faga 403/404 (/min)",
+      "title": "[13] Bot Scan: Ráfaga 403/404 (/min)",
       "type": "stat"
     },
     {
@@ -1351,7 +1551,7 @@
       },
       "gridPos": {
         "x": 10,
-        "y": 29,
+        "y": 36,
         "w": 5,
         "h": 4
       },
@@ -1380,12 +1580,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "[14] Bot Scan: Rutas Cr\u00edticas (.env/.git 5m)",
+      "title": "[14] Bot Scan: Rutas Críticas (.env/.git 5m)",
       "type": "stat"
     },
     {
@@ -1420,7 +1620,7 @@
       },
       "gridPos": {
         "x": 15,
-        "y": 29,
+        "y": 36,
         "w": 5,
         "h": 4
       },
@@ -1449,12 +1649,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "[15] Bot Scan: Esc\u00e1neres (sqlmap/nikto 5m)",
+      "title": "[15] Bot Scan: Escáneres (sqlmap/nikto 5m)",
       "type": "stat"
     },
     {
@@ -1493,7 +1693,7 @@
       },
       "gridPos": {
         "x": 20,
-        "y": 29,
+        "y": 36,
         "w": 4,
         "h": 4
       },
@@ -1522,7 +1722,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(cs_active_decisions) or vector(0)",
+          "expr": "sum(cs_active_decisions{instance=~\"$host\"}) or vector(0)",
           "legendFormat": "Decisiones Activas",
           "range": true,
           "refId": "A"
@@ -1538,7 +1738,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 40,
         "w": 16,
         "h": 10
       },
@@ -1566,7 +1766,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_netstat_Tcp_InSegs[2m])",
+          "expr": "rate(node_netstat_Tcp_InSegs{instance=~\"$host\"}[2m])",
           "legendFormat": "TCP InSegs/s",
           "range": true,
           "refId": "A"
@@ -1577,7 +1777,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_netstat_Tcp_OutSegs[2m])",
+          "expr": "rate(node_netstat_Tcp_OutSegs{instance=~\"$host\"}[2m])",
           "legendFormat": "TCP OutSegs/s",
           "range": true,
           "refId": "B"
@@ -1588,7 +1788,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_netstat_TcpExt_SyncookiesSent[1m])",
+          "expr": "rate(node_netstat_TcpExt_SyncookiesSent{instance=~\"$host\"}[1m])",
           "legendFormat": "SYN Cookies/s",
           "range": true,
           "refId": "C"
@@ -1599,13 +1799,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_netstat_Tcp_InSegs[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs[2m]), 1)",
-          "legendFormat": "Ratio Asimetr\u00eda In/Out",
+          "expr": "rate(node_netstat_Tcp_InSegs{instance=~\"$host\"}[2m]) / clamp_min(rate(node_netstat_Tcp_OutSegs{instance=~\"$host\"}[2m]), 1)",
+          "legendFormat": "Ratio Asimetría In/Out",
           "range": true,
           "refId": "D"
         }
       ],
-      "title": "Radar Principal DDoS L4: Segmentos TCP In/Out, Ratio Asimetr\u00eda y SYN Cookies (Detecci\u00f3n de Inundaci\u00f3n)",
+      "title": "Radar Principal DDoS L4: Segmentos TCP In/Out, Ratio Asimetría y SYN Cookies (Detección de Inundación)",
       "type": "timeseries"
     },
     {
@@ -1615,7 +1815,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 33,
+        "y": 40,
         "w": 8,
         "h": 10
       },
@@ -1701,7 +1901,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 50,
         "w": 24,
         "h": 10
       },
@@ -1729,7 +1929,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(rate({job=\"nginx_access\"}[1m])) or vector(0)",
+          "expr": "sum(rate({job=\"nginx_access\", host=~\"$host\"}[1m])) or vector(0)",
           "legendFormat": "HTTP req/s",
           "queryType": "range",
           "refId": "A"
@@ -1740,8 +1940,8 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "(sum(rate({job=\"nginx_access\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
-          "legendFormat": "R\u00e1fagas 403/404 (/min)",
+          "expr": "(sum(rate({job=\"nginx_access\", host=~\"$host\"} | json | status =~ \"403|404\"[2m])) * 60) or vector(0)",
+          "legendFormat": "Ráfagas 403/404 (/min)",
           "queryType": "range",
           "refId": "B"
         },
@@ -1751,8 +1951,8 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
-          "legendFormat": "Rutas Cr\u00edticas .env/.git (5m)",
+          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(\\\\.env|\\\\.git|wp-admin|phpmyadmin|actuator)\"[5m])) or vector(0)",
+          "legendFormat": "Rutas Críticas .env/.git (5m)",
           "queryType": "range",
           "refId": "C"
         },
@@ -1762,13 +1962,13 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"nginx_access\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
-          "legendFormat": "Esc\u00e1neres sqlmap/nikto (5m)",
+          "expr": "sum(count_over_time({job=\"nginx_access\", host=~\"$host\"} |~ \"(?i)(sqlmap|nikto|nuclei|nmap|masscan|zgrab)\"[5m])) or vector(0)",
+          "legendFormat": "Escáneres sqlmap/nikto (5m)",
           "queryType": "range",
           "refId": "D"
         }
       ],
-      "title": "Serie Temporal DDoS L7 & Bot Scan: HTTP/s, 403/404, .env/.git y Esc\u00e1neres",
+      "title": "Serie Temporal DDoS L7 & Bot Scan: HTTP/s, 403/404, .env/.git y Escáneres",
       "type": "timeseries"
     },
     {
@@ -1832,7 +2032,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 53
+        "y": 60
       },
       "id": 52,
       "options": {
@@ -1858,7 +2058,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by(reason) (cs_active_decisions)",
+          "expr": "sum by(reason) (cs_active_decisions{instance=~\"$host\"})",
           "legendFormat": "IPs Baneadas Activas: {{reason}}",
           "range": true,
           "refId": "A"
@@ -1869,7 +2069,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by(scenario) (rate(cs_alerts[5m]) * 60)",
+          "expr": "sum by(scenario) (rate(cs_alerts{instance=~\"$host\"}[5m]) * 60)",
           "legendFormat": "Alertas/min: {{scenario}}",
           "range": true,
           "refId": "B"
@@ -1932,7 +2132,7 @@
             "properties": [
               {
                 "id": "displayName",
-                "value": "Pa\u00eds (Country)"
+                "value": "País (Country)"
               },
               {
                 "id": "custom.width",
@@ -1976,7 +2176,7 @@
             "properties": [
               {
                 "id": "displayName",
-                "value": "Acci\u00f3n IPS"
+                "value": "Acción IPS"
               },
               {
                 "id": "custom.width",
@@ -1990,7 +2190,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 53
+        "y": 60
       },
       "id": 53,
       "options": {
@@ -2014,7 +2214,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "crowdsec_active_decision == 1",
+          "expr": "crowdsec_active_decision{instance=~\"$host\"} == 1",
           "format": "table",
           "instant": true,
           "range": false,
@@ -2053,11 +2253,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 61
+        "y": 68
       },
       "id": 23,
       "panels": [],
-      "title": "Explorador de Logs: M\u00e9trica de Volumen por Fuente (Loki)",
+      "title": "Explorador de Logs: Métrica de Volumen por Fuente (Loki)",
       "type": "row"
     },
     {
@@ -2120,7 +2320,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 69
       },
       "id": 24,
       "options": {
@@ -2145,7 +2345,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by(job) (count_over_time({job=~\".+\"}[5m]))",
+          "expr": "sum by(job) (count_over_time({job=~\".+\", host=~\"$host\"}[5m]))",
           "legendFormat": "{{job}}",
           "queryType": "range",
           "refId": "A"
@@ -2160,11 +2360,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 77
       },
       "id": 56,
       "panels": [],
-      "title": "Logs de Acceso y Red: Autenticaci\u00f3n SSH, Sudo y Firewall UFW",
+      "title": "Logs de Acceso y Red: Autenticación SSH, Sudo y Firewall UFW",
       "type": "row"
     },
     {
@@ -2176,7 +2376,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 78
       },
       "id": 25,
       "options": {
@@ -2196,12 +2396,12 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"ssh_auth\"} |~ \"(?i)\"",
+          "expr": "{job=\"ssh_auth\", host=~\"$host\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "Logs de Autenticaci\u00f3n SSH y Sudo (/var/log/auth.log)",
+      "title": "Logs de Autenticación SSH y Sudo (/var/log/auth.log)",
       "type": "logs"
     },
     {
@@ -2213,7 +2413,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 78
       },
       "id": 27,
       "options": {
@@ -2233,7 +2433,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"ufw_firewall\"} |~ \"(?i)\"",
+          "expr": "{job=\"ufw_firewall\", host=~\"$host\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2247,11 +2447,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 82
+        "y": 89
       },
       "id": 57,
       "panels": [],
-      "title": "Logs de Detecci\u00f3n e IPS: CrowdSec Security Engine (/var/log/crowdsec.log)",
+      "title": "Logs de Detección e IPS: CrowdSec Security Engine (/var/log/crowdsec.log)",
       "type": "row"
     },
     {
@@ -2263,7 +2463,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 83
+        "y": 90
       },
       "id": 54,
       "options": {
@@ -2283,7 +2483,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"crowdsec_ips\"} |~ \"(?i)\"",
+          "expr": "{job=\"crowdsec_ips\", host=~\"$host\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2297,7 +2497,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 94
+        "y": 101
       },
       "id": 58,
       "panels": [],
@@ -2313,7 +2513,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 95
+        "y": 102
       },
       "id": 55,
       "options": {
@@ -2333,7 +2533,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=~\"nginx_error|nginx_access\"} |~ \"(?i)\"",
+          "expr": "{job=~\"nginx_error|nginx_access\", host=~\"$host\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2350,7 +2550,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 95
+        "y": 102
       },
       "id": 26,
       "options": {
@@ -2370,7 +2570,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"docker_containers\", container=~\"\"} |~ \"(?i)\"",
+          "expr": "{job=\"docker_containers\", container=~\"\", host=~\"$host\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2387,7 +2587,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 106
+        "y": 113
       },
       "id": 28,
       "options": {
@@ -2407,7 +2607,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"systemd_journal\"} |~ \"(?i)\"",
+          "expr": "{job=\"systemd_journal\", host=~\"$host\"} |~ \"(?i)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -2430,6 +2630,35 @@
   ],
   "templating": {
     "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(node_memory_MemTotal_bytes, instance)",
+        "description": "Filtrar visualizaciones por servidor / satélite",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Servidor / Host",
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": {
+          "query": "label_values(node_memory_MemTotal_bytes, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
       {
         "name": "log_filter",
         "type": "textbox",

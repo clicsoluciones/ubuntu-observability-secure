@@ -66,7 +66,7 @@ prometheus.exporter.process "top_processes" {
 prometheus.scrape "host_metrics" {
 	scrape_interval = "15s"
 	targets         = concat(prometheus.exporter.unix.host_ubuntu.targets, prometheus.exporter.process.top_processes.targets)
-	forward_to      = [prometheus.remote_write.local_prom.receiver]
+	forward_to      = [prometheus.relabel.host_labels.receiver]
 }
 
 // Scrape CrowdSec Prometheus metrics endpoint on loopback port 6060
@@ -75,6 +75,19 @@ prometheus.scrape "crowdsec_metrics" {
 	targets = [
 		{"__address__" = "127.0.0.1:6060", "job" = "crowdsec", "instance" = constants.hostname},
 	]
+	forward_to = [prometheus.relabel.host_labels.receiver]
+}
+
+// Inyectar etiqueta de instancia y host uniforme para dashboards multi-host
+prometheus.relabel "host_labels" {
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+	rule {
+		target_label = "host"
+		replacement  = constants.hostname
+	}
 	forward_to = [prometheus.remote_write.local_prom.receiver]
 }
 

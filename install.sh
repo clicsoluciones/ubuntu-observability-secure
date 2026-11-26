@@ -17,6 +17,18 @@ SKIP_PREFLIGHT=0
 ACTION="install"
 ROLLBACK_DIR=""
 
+# Roles y topologia distribuida (standalone, master, satellite)
+ROLE="${ROLE:-standalone}"
+SATELLITES=""
+SATELLITE_NAME=""
+MASTER_ENDPOINT=""
+MASTER_PUBKEY=""
+SATELLITE_IP=""
+SATELLITE_PRIVKEY=""
+CROWDSEC_PASSWORD=""
+ADD_SAT_NAME=""
+WG_PORT="${WG_PORT:-51820}"
+
 show_help() {
   cat <<'EOF'
 Uso: sudo ./install.sh [OPCIONES]
@@ -30,8 +42,19 @@ Opciones:
   --no-crowdsec             Deshabilita la instalación y configuración de CrowdSec.
   --without-bouncer         Omite la instalación del bouncer firewall (deja CrowdSec en modo solo detección).
   --rollback <DIRECTORIO>   Restaura configuraciones y sysctl desde un backup previo y recarga servicios.
+  --role <ROL>              Rol del nodo: 'standalone' (por defecto), 'master' o 'satellite'.
+  --satellites <LISTA>      Lista separada por comas de satelites iniciales a registrar en el Master.
+  --add-satellite <NOMBRE>  Registra un nuevo satelite en el Master y genera su comando de vinculacion.
   --uninstall               Detiene y deshabilita los servicios de observabilidad, y retira configs creadas.
   -h, --help                Muestra esta ayuda y termina.
+
+Opciones para el rol Satellite:
+  --name <NOMBRE>           Identificador unico de este satelite (por defecto: hostname).
+  --master <IP:PUERTO>      Endpoint publico del Master WireGuard (ej. 198.51.100.5:51820).
+  --master-key <PUBKEY>     Clave publica WireGuard del servidor Master.
+  --satellite-ip <IP>       IP privada asignada en la red WireGuard (ej. 10.10.0.2).
+  --satellite-key <PRIVKEY> Clave privada WireGuard para este satelite.
+  --crowdsec-password <PW>  Contrasena para registrar el agente en el CrowdSec LAPI del Master.
 
 Variables de entorno compatibles:
   GRAFANA_PORT=<1-65535>    (por defecto: 3000)
@@ -92,6 +115,87 @@ while [[ $# -gt 0 ]]; do
       ACTION="uninstall"
       shift
       ;;
+    --role)
+      if [[ $# -lt 2 || -z "${2:-}" || ! "${2:-}" =~ ^(standalone|master|satellite)$ ]]; then
+        echo "Error: --role requiere uno de los siguientes valores: standalone, master, satellite." >&2
+        exit 1
+      fi
+      ROLE="$2"
+      shift 2
+      ;;
+    --satellites)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --satellites requiere una lista separada por comas (ej: frontend,backend)." >&2
+        exit 1
+      fi
+      SATELLITES="$2"
+      shift 2
+      ;;
+    --add-satellite)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --add-satellite requiere el nombre del satelite." >&2
+        exit 1
+      fi
+      ACTION="add_satellite"
+      ADD_SAT_NAME="$2"
+      shift 2
+      ;;
+    --name)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --name requiere un identificador valido." >&2
+        exit 1
+      fi
+      SATELLITE_NAME="$2"
+      shift 2
+      ;;
+    --master)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --master requiere el endpoint IP:PUERTO del servidor master." >&2
+        exit 1
+      fi
+      MASTER_ENDPOINT="$2"
+      shift 2
+      ;;
+    --master-key)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --master-key requiere la clave publica del master." >&2
+        exit 1
+      fi
+      MASTER_PUBKEY="$2"
+      shift 2
+      ;;
+    --satellite-ip)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --satellite-ip requiere la IP interna del satelite (ej. 10.10.0.2)." >&2
+        exit 1
+      fi
+      SATELLITE_IP="$2"
+      shift 2
+      ;;
+    --satellite-key)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --satellite-key requiere la clave privada del satelite." >&2
+        exit 1
+      fi
+      SATELLITE_PRIVKEY="$2"
+      shift 2
+      ;;
+    --crowdsec-password)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: --crowdsec-password requiere una contrasena." >&2
+        exit 1
+      fi
+      CROWDSEC_PASSWORD="$2"
+      shift 2
+      ;;
+    --wireguard-port)
+      if [[ $# -lt 2 || -z "${2:-}" || ! "${2:-}" =~ ^[0-9]+$ ]]; then
+        echo "Error: --wireguard-port requiere un numero de puerto valido." >&2
+        exit 1
+      fi
+      WG_PORT="$2"
+      shift 2
+      ;;
     -h|--help)
       show_help
       exit 0
@@ -123,9 +227,22 @@ apt_cmd() {
 }
 
 # Pre-flight Root Check
-if [[ $EUID -ne 0 ]]; then
+if [[ $EUID -ne 0 && "$DRY_RUN" -eq 0 ]]; then
   echo "Error: Requiere privilegios de superusuario. Ejecuta con: sudo $0" >&2
   exit 1
+fi
+
+if [[ "$ACTION" == "add_satellite" ]]; then
+  if [[ ! -f "$SCRIPT_DIR/add_satellite.sh" ]]; then
+    echo "Error: No se encontro '$SCRIPT_DIR/add_satellite.sh'." >&2
+    exit 1
+  fi
+  chmod +x "$SCRIPT_DIR/add_satellite.sh" 2>/dev/null || true
+  exec "$SCRIPT_DIR/add_satellite.sh" "$ADD_SAT_NAME"
+fi
+
+if [[ -z "$SATELLITE_NAME" ]]; then
+  SATELLITE_NAME="$(hostname -s 2>/dev/null || echo "satellite")"
 fi
 
 # Setup logging (in dry-run mode, also append if possible, otherwise skip file redirection if write fails)
@@ -325,14 +442,18 @@ run_preflight() {
     echo "  [OK] Arquitectura compatible: $arch"
   fi
 
-  # 4. RAM check (warn if total < 1800MB)
+  # 4. RAM check
   local total_mem_kb=0
   if [[ -f /proc/meminfo ]]; then
     total_mem_kb=$(awk '/MemTotal:/ {print $2}' /proc/meminfo || echo 0)
   fi
   local total_mem_mb=$(( total_mem_kb / 1024 ))
-  if [[ "$total_mem_mb" -gt 0 && "$total_mem_mb" -lt 1800 ]]; then
-    echo "ADVERTENCIA: Memoria RAM total baja detectada (${total_mem_mb} MB). Se recomiendan al menos 2 GB (2048 MB) para la pila completa." >&2
+  local min_ram_mb=1800
+  if [[ "$ROLE" == "satellite" ]]; then
+    min_ram_mb=450
+  fi
+  if [[ "$total_mem_mb" -gt 0 && "$total_mem_mb" -lt "$min_ram_mb" ]]; then
+    echo "ADVERTENCIA: Memoria RAM total baja detectada (${total_mem_mb} MB). Se recomiendan al menos ${min_ram_mb} MB para el rol ${ROLE}." >&2
     if [[ "$SKIP_PREFLIGHT" -eq 0 ]]; then
       echo "             Usa --skip-preflight si deseas continuar bajo tu propio riesgo." >&2
       preflight_ok=0
@@ -341,12 +462,16 @@ run_preflight() {
     echo "  [OK] Memoria RAM: ${total_mem_mb} MB disponibles"
   fi
 
-  # 5. Disk space check (/var and /: at least 3GB free in /var)
+  # 5. Disk space check (/var: al menos 3GB para master/standalone, 500MB para satellite)
   local var_avail_kb
   var_avail_kb=$(df -k /var 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)
   local var_avail_mb=$(( var_avail_kb / 1024 ))
-  if [[ "$var_avail_mb" -gt 0 && "$var_avail_mb" -lt 3072 ]]; then
-    echo "ADVERTENCIA: Espacio disponible en /var es bajo (${var_avail_mb} MB). Se recomiendan mínimo 3000 MB para TSDB y logs." >&2
+  local min_disk_mb=3072
+  if [[ "$ROLE" == "satellite" ]]; then
+    min_disk_mb=500
+  fi
+  if [[ "$var_avail_mb" -gt 0 && "$var_avail_mb" -lt "$min_disk_mb" ]]; then
+    echo "ADVERTENCIA: Espacio disponible en /var es bajo (${var_avail_mb} MB). Se recomiendan minimo ${min_disk_mb} MB para el rol ${ROLE}." >&2
     if [[ "$SKIP_PREFLIGHT" -eq 0 ]]; then
       echo "             Libera espacio o utiliza --skip-preflight para continuar." >&2
       preflight_ok=0
@@ -397,15 +522,158 @@ backup_file() {
 }
 
 for f in /etc/prometheus/prometheus.yml /etc/default/prometheus /etc/loki/config.yml \
-         /etc/alloy/config.alloy /etc/grafana/grafana.ini /etc/sysctl.d/99-observability-ddos.conf; do
+         /etc/alloy/config.alloy /etc/grafana/grafana.ini /etc/sysctl.d/99-observability-ddos.conf /etc/wireguard/wg0.conf; do
   backup_file "$f"
 done
+
+setup_wireguard_master() {
+  echo "==> Configurando WireGuard en Servidor Master (IP 10.10.0.1/24, UDP $WG_PORT)"
+  run_cmd install -d -m 0700 /etc/wireguard
+  run_cmd install -d -m 0700 /etc/wireguard/satellites
+
+  local server_priv="/etc/wireguard/server_private.key"
+  local server_pub="/etc/wireguard/server_public.key"
+  local wg_conf="/etc/wireguard/wg0.conf"
+
+  if [[ ! -f "$server_priv" || ! -f "$server_pub" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "[DRY-RUN] Generar claves de WireGuard del servidor"
+    else
+      local priv pub
+      if command -v wg >/dev/null 2>&1; then
+        priv="$(wg genkey)"
+        pub="$(echo "$priv" | wg pubkey)"
+      else
+        priv="$(openssl rand -base64 32)"
+        pub="$(openssl rand -base64 32)"
+      fi
+      echo "$priv" > "$server_priv"
+      echo "$pub" > "$server_pub"
+      chmod 0600 "$server_priv"
+      chmod 0644 "$server_pub"
+    fi
+  fi
+
+  if [[ ! -f "$wg_conf" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "[DRY-RUN] Crear $wg_conf con IP 10.10.0.1/24"
+    else
+      local priv_key
+      priv_key="$(cat "$server_priv" 2>/dev/null || echo "DUMMY_KEY")"
+      cat > "$wg_conf" <<EOF
+[Interface]
+Address = 10.10.0.1/24
+ListenPort = $WG_PORT
+PrivateKey = $priv_key
+SaveConfig = false
+
+PostUp = iptables -A INPUT -p udp --dport $WG_PORT -j ACCEPT; iptables -A INPUT -i wg0 -j ACCEPT
+PostDown = iptables -D INPUT -p udp --dport $WG_PORT -j ACCEPT; iptables -D INPUT -i wg0 -j ACCEPT
+EOF
+      chmod 0600 "$wg_conf"
+    fi
+  fi
+
+  run_cmd systemctl daemon-reload
+  run_cmd systemctl enable "wg-quick@wg0"
+  run_cmd systemctl restart "wg-quick@wg0" || true
+
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qw "active"; then
+    run_cmd ufw allow "$WG_PORT/udp" comment "WireGuard Observability" || true
+    run_cmd ufw allow in on wg0 comment "WireGuard Satellite Ingestion" || true
+  fi
+
+  if [[ -f "$SCRIPT_DIR/add_satellite.sh" ]]; then
+    run_cmd install -m 0755 "$SCRIPT_DIR/add_satellite.sh" /usr/local/bin/add-satellite
+  fi
+
+  if [[ -n "$SATELLITES" ]]; then
+    IFS=',' read -ra SATS <<< "$SATELLITES"
+    for sat in "${SATS[@]}"; do
+      sat="$(echo "$sat" | xargs)"
+      if [[ -n "$sat" ]]; then
+        echo "==> Registrando satelite inicial: $sat"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+          echo "[DRY-RUN] $SCRIPT_DIR/add_satellite.sh $sat"
+        else
+          "$SCRIPT_DIR/add_satellite.sh" "$sat" || true
+        fi
+      fi
+    done
+  fi
+}
+
+setup_wireguard_satellite() {
+  echo "==> Configurando WireGuard en Nodo Satelite (IP $SATELLITE_IP/24 -> Master $MASTER_ENDPOINT)"
+  if [[ -z "$MASTER_ENDPOINT" || -z "$MASTER_PUBKEY" || -z "$SATELLITE_IP" ]]; then
+    echo "ERROR: El rol satellite requiere --master <ENDPOINT>, --master-key <PUBKEY> y --satellite-ip <IP>." >&2
+    exit 1
+  fi
+
+  run_cmd install -d -m 0700 /etc/wireguard
+  local wg_conf="/etc/wireguard/wg0.conf"
+
+  if [[ -z "$SATELLITE_PRIVKEY" ]]; then
+    if command -v wg >/dev/null 2>&1; then
+      SATELLITE_PRIVKEY="$(wg genkey)"
+    else
+      SATELLITE_PRIVKEY="$(openssl rand -base64 32)"
+    fi
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[DRY-RUN] Escribir $wg_conf con Address = $SATELLITE_IP/24"
+  else
+    cat > "$wg_conf" <<EOF
+[Interface]
+Address = $SATELLITE_IP/24
+PrivateKey = $SATELLITE_PRIVKEY
+
+[Peer]
+PublicKey = $MASTER_PUBKEY
+Endpoint = $MASTER_ENDPOINT
+AllowedIPs = 10.10.0.0/24
+PersistentKeepalive = 25
+EOF
+    chmod 0600 "$wg_conf"
+  fi
+
+  run_cmd systemctl daemon-reload
+  run_cmd systemctl enable "wg-quick@wg0"
+  run_cmd systemctl restart "wg-quick@wg0" || true
+
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    echo -n "  Verificando enlace WireGuard con el Master (10.10.0.1)... "
+    for _ in {1..10}; do
+      if ping -c 1 -W 1 10.10.0.1 >/dev/null 2>&1; then
+        echo "[OK]"
+        break
+      fi
+      sleep 1
+    done
+  fi
+}
+
 
 echo "==> Instalando dependencias base"
 export DEBIAN_FRONTEND=noninteractive
 apt_cmd update
-apt_cmd install -y ca-certificates curl wget gnupg apt-transport-https \
-  auditd audispd-plugins ufw prometheus
+BASE_PKGS="ca-certificates curl wget gnupg apt-transport-https auditd audispd-plugins ufw"
+if [[ "$ROLE" == "master" || "$ROLE" == "satellite" ]]; then
+  BASE_PKGS="$BASE_PKGS wireguard wireguard-tools"
+fi
+if [[ "$ROLE" != "satellite" ]]; then
+  BASE_PKGS="$BASE_PKGS prometheus"
+fi
+apt_cmd install -y $BASE_PKGS
+
+# Configuracion WireGuard segun rol
+if [[ "$ROLE" == "master" ]]; then
+  setup_wireguard_master
+elif [[ "$ROLE" == "satellite" ]]; then
+  setup_wireguard_satellite
+fi
+
 
 echo "==> Añadiendo repositorio oficial Grafana Labs (clave APT dedicada)"
 run_cmd install -d -m 0755 /etc/apt/keyrings
@@ -422,7 +690,11 @@ EOF
 fi
 
 apt_cmd update
-apt_cmd install -y grafana loki alloy
+if [[ "$ROLE" == "satellite" ]]; then
+  apt_cmd install -y alloy
+else
+  apt_cmd install -y grafana loki alloy
+fi
 
 echo "==> Configurando parámetros de kernel (conserva backup)"
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -439,62 +711,67 @@ fi
 run_cmd modprobe nf_conntrack || true
 run_cmd sysctl --system
 
-echo "==> Configurando Prometheus solo en loopback"
-# Asegurar instalación de Prometheus moderno con soporte de remote-write-receiver (Prometheus >= 2.33)
-# En Ubuntu 20.04, el paquete APT provee Prometheus 2.15 (demasiado antiguo para remote-write-receiver).
-# Si el binario es < 2.33, descargamos el binario oficial de Prometheus para mantener compatibilidad total.
-if command -v prometheus >/dev/null 2>&1; then
-  if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
-    echo "==> Actualizando Prometheus a versión moderna compatible con remote write receiver..."
-    PROM_VER="2.55.1"
-    ARCH="amd64"
-    if [[ "$(uname -m)" =~ (aarch64|arm64) ]]; then
-      ARCH="arm64"
-    fi
-    TMP_PROM="/tmp/prometheus-${PROM_VER}.linux-${ARCH}"
-    curl -fsSL --connect-timeout 10 --max-time 60 "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-${ARCH}.tar.gz" | tar -xz -C /tmp
-    if [[ -f "${TMP_PROM}/prometheus" ]]; then
-      install -m 0755 "${TMP_PROM}/prometheus" /usr/bin/prometheus
-      install -m 0755 "${TMP_PROM}/promtool" /usr/bin/promtool
-      rm -rf "${TMP_PROM}"
-      echo "  [OK] Prometheus actualizado a v${PROM_VER}"
+if [[ "$ROLE" != "satellite" ]]; then
+  echo "==> Configurando Prometheus (conserva bases de datos y metricas previas)"
+  if command -v prometheus >/dev/null 2>&1; then
+    if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
+      echo "==> Actualizando Prometheus a version moderna compatible con remote write receiver..."
+      PROM_VER="2.55.1"
+      ARCH="amd64"
+      if [[ "$(uname -m)" =~ (aarch64|arm64) ]]; then
+        ARCH="arm64"
+      fi
+      TMP_PROM="/tmp/prometheus-${PROM_VER}.linux-${ARCH}"
+      curl -fsSL --connect-timeout 10 --max-time 60 "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-${ARCH}.tar.gz" | tar -xz -C /tmp
+      if [[ -f "${TMP_PROM}/prometheus" ]]; then
+        install -m 0755 "${TMP_PROM}/prometheus" /usr/bin/prometheus
+        install -m 0755 "${TMP_PROM}/promtool" /usr/bin/promtool
+        rm -rf "${TMP_PROM}"
+        echo "  [OK] Prometheus actualizado a v${PROM_VER}"
+      fi
     fi
   fi
-fi
 
-run_cmd install -d -o prometheus -g prometheus -m 0750 /etc/prometheus/rules
-run_cmd install -m 0644 "$SCRIPT_DIR/prometheus/prometheus.yml" /etc/prometheus/prometheus.yml
-run_cmd install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml
-if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN] Configurar /etc/default/prometheus"
-else
-  cat > /etc/default/prometheus <<'EOF'
-ARGS="--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/metrics2 --storage.tsdb.retention.time=15d --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver"
+  run_cmd install -d -o prometheus -g prometheus -m 0750 /etc/prometheus/rules
+  run_cmd install -m 0644 "$SCRIPT_DIR/prometheus/prometheus.yml" /etc/prometheus/prometheus.yml
+  run_cmd install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml
+  
+  prom_listen_addr="127.0.0.1:9090"
+  if [[ "$ROLE" == "master" ]]; then
+    prom_listen_addr="0.0.0.0:9090"
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[DRY-RUN] Configurar /etc/default/prometheus con web.listen-address=${prom_listen_addr}"
+  else
+    cat > /etc/default/prometheus <<EOF
+ARGS="--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/metrics2 --storage.tsdb.retention.time=15d --web.listen-address=${prom_listen_addr} --web.enable-remote-write-receiver"
 EOF
-fi
-run_cmd chown -R prometheus:prometheus /etc/prometheus
-run_cmd chmod 0640 /etc/prometheus/prometheus.yml /etc/prometheus/rules/host-alerts.yml
-
-echo "==> Configurando Loki solo en loopback (retención 14 días)"
-# Garantizar la existencia del grupo y usuario del sistema loki
-if ! getent group loki >/dev/null 2>&1; then
-  run_cmd groupadd --system loki || true
-fi
-if ! getent passwd loki >/dev/null 2>&1; then
-  run_cmd useradd --system -g loki -d /var/lib/loki -s /usr/sbin/nologin loki || true
-fi
-if ! getent group loki >/dev/null 2>&1; then
-  run_cmd groupadd --system loki || true
-fi
-if ! getent passwd loki >/dev/null 2>&1; then
-  run_cmd useradd --system -g loki -d /var/lib/loki -s /usr/sbin/nologin loki || true
+  fi
+  run_cmd chown -R prometheus:prometheus /etc/prometheus
+  run_cmd chmod 0640 /etc/prometheus/prometheus.yml /etc/prometheus/rules/host-alerts.yml
 fi
 
-run_cmd install -d -o loki -g loki -m 0750 /var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor
-run_cmd chown -R loki:loki /var/lib/loki
-run_cmd install -d -m 0755 /etc/loki
-run_cmd install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
-run_cmd chown loki:loki /etc/loki/config.yml
+if [[ "$ROLE" != "satellite" ]]; then
+  echo "==> Configurando Loki (retencion 14 dias, conserva chunks y datos previos)"
+  if ! getent group loki >/dev/null 2>&1; then
+    run_cmd groupadd --system loki || true
+  fi
+  if ! getent passwd loki >/dev/null 2>&1; then
+    run_cmd useradd --system -g loki -d /var/lib/loki -s /usr/sbin/nologin loki || true
+  fi
+
+  run_cmd install -d -o loki -g loki -m 0750 /var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor
+  run_cmd chown -R loki:loki /var/lib/loki
+  run_cmd install -d -m 0755 /etc/loki
+  run_cmd install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
+  
+  if [[ "$ROLE" == "master" ]]; then
+    run_cmd sed -i 's/http_listen_address: 127.0.0.1/http_listen_address: 0.0.0.0/g' /etc/loki/config.yml
+    run_cmd sed -i 's/grpc_listen_address: 127.0.0.1/grpc_listen_address: 0.0.0.0/g' /etc/loki/config.yml
+  fi
+  run_cmd chown loki:loki /etc/loki/config.yml
+fi
 
 echo "==> Configurando Alloy y permisos de lectura de logs (sistema, Nginx y Docker)"
 # Garantizar existencia del grupo y usuario alloy
@@ -516,6 +793,11 @@ fi
 run_cmd install -d -o alloy -g alloy -m 0750 /var/lib/alloy
 run_cmd install -d -m 0755 /etc/alloy
 run_cmd install -m 0644 "$SCRIPT_DIR/alloy/config.alloy" /etc/alloy/config.alloy
+if [[ "$ROLE" == "satellite" ]]; then
+  echo "  [Satelite] Redirigiendo remote_write y push de logs de Alloy al Master (10.10.0.1)"
+  run_cmd sed -i 's|http://127.0.0.1:9090/api/v1/write|http://10.10.0.1:9090/api/v1/write|g' /etc/alloy/config.alloy
+  run_cmd sed -i 's|http://127.0.0.1:3100/loki/api/v1/push|http://10.10.0.1:3100/loki/api/v1/push|g' /etc/alloy/config.alloy
+fi
 run_cmd chown alloy:alloy /etc/alloy/config.alloy
 
 # Reforzar grupos suplementarios en systemd para que alloy pueda leer /var/log/auth.log, journald y /var/run/docker.sock
@@ -546,34 +828,36 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qw "active";
   run_cmd chmod 0640 /var/log/ufw.log 2>/dev/null || true
 fi
 
-echo "==> Configurando fuentes de datos, dashboards y las 16 alertas preconfiguradas de Grafana"
-run_cmd install -d -m 0755 /etc/grafana/provisioning/datasources
-run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/datasources/datasources.yml" \
-  /etc/grafana/provisioning/datasources/observability.yml
+if [[ "$ROLE" != "satellite" ]]; then
+  echo "==> Configurando fuentes de datos, dashboards y las 16 alertas preconfiguradas de Grafana"
+  run_cmd install -d -m 0755 /etc/grafana/provisioning/datasources
+  run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/datasources/datasources.yml" \
+    /etc/grafana/provisioning/datasources/observability.yml
 
-run_cmd install -d -m 0755 /etc/grafana/provisioning/dashboards
-run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/dashboards/dashboards.yml" \
-  /etc/grafana/provisioning/dashboards/observability-dashboards.yml
+  run_cmd install -d -m 0755 /etc/grafana/provisioning/dashboards
+  run_cmd install -m 0644 "$SCRIPT_DIR/grafana/provisioning/dashboards/dashboards.yml" \
+    /etc/grafana/provisioning/dashboards/observability-dashboards.yml
 
-run_cmd install -d -m 0755 /etc/grafana/provisioning/alerting
-run_cmd install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
-  /etc/grafana/provisioning/alerting/observability-alerts.yml
-run_cmd chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
+  run_cmd install -d -m 0755 /etc/grafana/provisioning/alerting
+  run_cmd install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
+    /etc/grafana/provisioning/alerting/observability-alerts.yml
+  run_cmd chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
 
-run_cmd install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
-run_cmd install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
-  /var/lib/grafana/dashboards/ubuntu-security-overview.json
+  run_cmd install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
+  run_cmd install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
+    /var/lib/grafana/dashboards/ubuntu-security-overview.json
 
-run_cmd install -d -m 0755 /etc/systemd/system/grafana-server.service.d
-if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN] Configurar /etc/systemd/system/grafana-server.service.d/observability.conf (puerto $GRAFANA_PORT y Home Dashboard)"
-else
-  cat > /etc/systemd/system/grafana-server.service.d/observability.conf <<EOF
+  run_cmd install -d -m 0755 /etc/systemd/system/grafana-server.service.d
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[DRY-RUN] Configurar /etc/systemd/system/grafana-server.service.d/observability.conf (puerto $GRAFANA_PORT y Home Dashboard)"
+  else
+    cat > /etc/systemd/system/grafana-server.service.d/observability.conf <<EOF
 [Service]
 Environment="GF_SERVER_HTTP_ADDR=127.0.0.1"
 Environment="GF_SERVER_HTTP_PORT=$GRAFANA_PORT"
 Environment="GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/ubuntu-security-overview.json"
 EOF
+  fi
 fi
 
 echo "==> Instalando reglas auditd para cambios de identidad y privilegios"
@@ -619,8 +903,11 @@ if [[ "$INSTALL_CROWDSEC" == "1" ]]; then
 
   # Configurar whitelist automática de loopback e IPs privadas para evitar autobloqueos
   echo "==> Configurando whitelist de seguridad en CrowdSec (/etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml)"
-  install -d -m 0755 /etc/crowdsec/parsers/s02-enrich
-  cat > /etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml <<'EOF'
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[DRY-RUN] Configurar whitelist automática en /etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml"
+  else
+    install -d -m 0755 /etc/crowdsec/parsers/s02-enrich
+    cat > /etc/crowdsec/parsers/s02-enrich/00_default_whitelists.yaml <<'EOF'
 name: default/infra_whitelists
 description: "Whitelist automatica de loopback y rangos privados para prevenir autobloqueo de servicios internos"
 whitelist:
@@ -633,6 +920,22 @@ whitelist:
     - "172.16.0.0/12"
     - "192.168.0.0/16"
 EOF
+  fi
+
+  if [[ "$ROLE" == "master" ]]; then
+    if [[ -f /etc/crowdsec/config.yaml ]]; then
+      run_cmd sed -i 's|listen_uri: 127.0.0.1:8080|listen_uri: 0.0.0.0:8080|g' /etc/crowdsec/config.yaml || true
+    fi
+  elif [[ "$ROLE" == "satellite" ]]; then
+    if [[ -n "$CROWDSEC_PASSWORD" ]]; then
+      echo "==> Registrando agente CrowdSec en el LAPI del Master (10.10.0.1:8080)"
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DRY-RUN] cscli lapi register -u http://10.10.0.1:8080 --machine $SATELLITE_NAME --password [OCULTA]"
+      else
+        cscli lapi register -u "http://10.10.0.1:8080" --machine "$SATELLITE_NAME" --password "$CROWDSEC_PASSWORD" || true
+      fi
+    fi
+  fi
 
   run_cmd systemctl enable --now crowdsec
   run_cmd systemctl reload crowdsec || true
@@ -646,15 +949,19 @@ EOF
   fi
 
   echo "==> Aprovisionando exportador cron de decisiones activas de CrowdSec (IP + País)"
-  install -d -m 0755 /usr/local/bin /var/lib/alloy/textfile
-  install -m 0755 "$SCRIPT_DIR/scripts/export_crowdsec_decisions.sh" /usr/local/bin/export_crowdsec_decisions.sh
-  # Ejecutar una vez inicialmente
-  /usr/local/bin/export_crowdsec_decisions.sh || true
-  # Configurar entrada cron cada minuto
-  cat > /etc/cron.d/crowdsec-decisions-exporter <<'CRON'
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[DRY-RUN] Configurar export_crowdsec_decisions.sh en /etc/cron.d/crowdsec-decisions-exporter"
+  else
+    install -d -m 0755 /usr/local/bin /var/lib/alloy/textfile
+    install -m 0755 "$SCRIPT_DIR/scripts/export_crowdsec_decisions.sh" /usr/local/bin/export_crowdsec_decisions.sh
+    # Ejecutar una vez inicialmente
+    /usr/local/bin/export_crowdsec_decisions.sh || true
+    # Configurar entrada cron cada minuto
+    cat > /etc/cron.d/crowdsec-decisions-exporter <<'CRON'
 * * * * * root /usr/local/bin/export_crowdsec_decisions.sh >/dev/null 2>&1
 CRON
-  chmod 0644 /etc/cron.d/crowdsec-decisions-exporter
+    chmod 0644 /etc/cron.d/crowdsec-decisions-exporter
+  fi
 else
   echo "CrowdSec omitido (--no-crowdsec o INSTALL_CROWDSEC=0)"
 fi
@@ -680,41 +987,65 @@ else
   fi
 fi
 
-# Deterministic Loki service unit discovery
-LOKI_SERVICE="$(get_loki_service_name)"
-echo "==> Unidad de servicio Loki detectada: ${LOKI_SERVICE}.service"
+if [[ "$ROLE" == "satellite" ]]; then
+  echo "==> Habilitando y reiniciando servicios en Nodo Satelite (Alloy, CrowdSec, auditd)"
+  run_cmd systemctl daemon-reload
+  run_cmd systemctl reset-failed alloy 2>/dev/null || true
+  run_cmd systemctl enable --now alloy
+  run_cmd systemctl restart alloy
+  run_cmd systemctl restart auditd || true
 
-echo "==> Habilitando y reiniciando servicios en orden (Prometheus/Loki -> Alloy -> Grafana)"
-run_cmd systemctl daemon-reload
-run_cmd systemctl reset-failed prometheus "$LOKI_SERVICE" alloy grafana-server 2>/dev/null || true
-run_cmd systemctl enable --now prometheus "$LOKI_SERVICE"
-run_cmd systemctl restart prometheus "$LOKI_SERVICE"
-
-if [[ "$DRY_RUN" -eq 0 ]]; then
-  echo -n "  Esperando a que Loki esté listo en 127.0.0.1:3100... "
-  for _ in {1..15}; do
-    if curl -fsSL "http://127.0.0.1:3100/ready" >/dev/null 2>&1; then
-      echo "[OK]"
-      break
+  echo
+  echo "==> Estado de servicios del Satelite"
+  for s in alloy crowdsec crowdsec-firewall-bouncer wg-quick@wg0; do
+    printf '%-26s' "$s"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "[DRY-RUN: verificacion omitida]"
+    else
+      systemctl is-active "$s" 2>/dev/null || true
     fi
-    sleep 1
+  done
+else
+  # Deterministic Loki service unit discovery
+  LOKI_SERVICE="$(get_loki_service_name)"
+  echo "==> Unidad de servicio Loki detectada: ${LOKI_SERVICE}.service"
+
+  echo "==> Habilitando y reiniciando servicios en orden (Prometheus/Loki -> Alloy -> Grafana)"
+  run_cmd systemctl daemon-reload
+  run_cmd systemctl reset-failed prometheus "$LOKI_SERVICE" alloy grafana-server 2>/dev/null || true
+  run_cmd systemctl enable --now prometheus "$LOKI_SERVICE"
+  run_cmd systemctl restart prometheus "$LOKI_SERVICE"
+
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    echo -n "  Esperando a que Loki este listo en 127.0.0.1:3100... "
+    for _ in {1..15}; do
+      if curl -fsSL "http://127.0.0.1:3100/ready" >/dev/null 2>&1; then
+        echo "[OK]"
+        break
+      fi
+      sleep 1
+    done
+  fi
+
+  run_cmd systemctl enable --now alloy grafana-server
+  run_cmd systemctl restart alloy grafana-server
+  run_cmd systemctl restart auditd || true
+
+  echo
+  echo "==> Estado de servicios"
+  local_svcs=("prometheus" "$LOKI_SERVICE" "alloy" "grafana-server" "crowdsec")
+  if [[ "$ROLE" == "master" ]]; then
+    local_svcs+=("wg-quick@wg0")
+  fi
+  for s in "${local_svcs[@]}"; do
+    printf '%-20s' "$s"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "[DRY-RUN: verificacion omitida]"
+    else
+      systemctl is-active "$s" 2>/dev/null || true
+    fi
   done
 fi
-
-run_cmd systemctl enable --now alloy grafana-server
-run_cmd systemctl restart alloy grafana-server
-run_cmd systemctl restart auditd || true
-
-echo
-echo "==> Estado de servicios"
-for s in prometheus "$LOKI_SERVICE" alloy grafana-server crowdsec; do
-  printf '%-18s' "$s"
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "[DRY-RUN: verificación omitida]"
-  else
-    systemctl is-active "$s" 2>/dev/null || true
-  fi
-done
 
 echo
 echo "==> Puertos esperados (todos internos en loopback)"
@@ -725,66 +1056,66 @@ else
 fi
 
 echo
-echo "==> Configurando credenciales administrativas de Grafana"
-GRAFANA_PASS_SET=0
-GRAFANA_ADMIN_PASS=""
-if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[DRY-RUN] Generar clave aleatoria segura y asignar apuntando a /var/lib/grafana"
-  GRAFANA_ADMIN_PASS="[GENERADA_ALEATORIAMENTE_EN_EJECUCION_REAL]"
-else
-  # Generar contraseña alfanumérica segura sin símbolos conflictivos con expansiones de shell
-  GRAFANA_ADMIN_PASS="$(python3 -c 'import secrets, string; alphabet = string.ascii_letters + string.digits; print("".join(secrets.choice(alphabet) for _ in range(24)))' 2>/dev/null || true)"
-  if [[ -z "$GRAFANA_ADMIN_PASS" ]]; then
-    GRAFANA_ADMIN_PASS="AdminSec$(date +%s%N | head -c 16)"
+if [[ "$ROLE" != "satellite" ]]; then
+  echo "==> Configurando credenciales administrativas de Grafana"
+  GRAFANA_PASS_SET=0
+  GRAFANA_ADMIN_PASS=""
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[DRY-RUN] Generar clave aleatoria segura y asignar apuntando a /var/lib/grafana"
+    GRAFANA_ADMIN_PASS="[GENERADA_ALEATORIAMENTE_EN_EJECUCION_REAL]"
+  else
+    # Generar contraseña alfanumérica segura sin símbolos conflictivos con expansiones de shell
+    GRAFANA_ADMIN_PASS="$(python3 -c 'import secrets, string; alphabet = string.ascii_letters + string.digits; print("".join(secrets.choice(alphabet) for _ in range(24)))' 2>/dev/null || true)"
+    if [[ -z "$GRAFANA_ADMIN_PASS" ]]; then
+      GRAFANA_ADMIN_PASS="AdminSec$(date +%s%N | head -c 16)"
+    fi
+
+    # Limpiar posible base de datos huérfana creada en /usr/share/grafana/data por ejecuciones sin paths.data
+    rm -rf /usr/share/grafana/data 2>/dev/null || true
+
+    # Esperar a que Grafana inicialice /var/lib/grafana/grafana.db y su socket HTTP (máx 30s)
+    for _ in {1..15}; do
+      if [[ -f /var/lib/grafana/grafana.db ]] && curl -fsSL "http://127.0.0.1:${GRAFANA_PORT}/api/health" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 2
+    done
+
+    # Ejecutar pasando explícitamente cfg:default.paths.data=/var/lib/grafana igual que el unit de systemd
+    local_homepath="/usr/share/grafana"
+    local_cfg="/etc/grafana/grafana.ini"
+    local_data="/var/lib/grafana"
+    local_logs="/var/log/grafana"
+    local_plugins="/var/lib/grafana/plugins"
+
+    if command -v grafana >/dev/null 2>&1; then
+      if runuser -u grafana -- grafana cli \
+        --homepath "$local_homepath" \
+        --config "$local_cfg" \
+        --configOverrides="cfg:default.paths.data=$local_data cfg:default.paths.logs=$local_logs cfg:default.paths.plugins=$local_plugins" \
+        admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
+        GRAFANA_PASS_SET=1
+      fi
+    fi
+
+    if [[ "$GRAFANA_PASS_SET" -eq 0 ]] && command -v grafana-cli >/dev/null 2>&1; then
+      if runuser -u grafana -- grafana-cli \
+        --homepath "$local_homepath" \
+        --config "$local_cfg" \
+        --configOverrides="cfg:default.paths.data=$local_data cfg:default.paths.logs=$local_logs cfg:default.paths.plugins=$local_plugins" \
+        admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
+        GRAFANA_PASS_SET=1
+      fi
+    fi
+
+    # Asegurar permisos correctos en /var/lib/grafana y reiniciar para limpiar lockouts en memoria
+    chown -R grafana:grafana /var/lib/grafana 2>/dev/null || true
+    systemctl restart grafana-server || true
   fi
 
-  # Limpiar posible base de datos huérfana creada en /usr/share/grafana/data por ejecuciones sin paths.data
-  rm -rf /usr/share/grafana/data 2>/dev/null || true
-
-  # Esperar a que Grafana inicialice /var/lib/grafana/grafana.db y su socket HTTP (máx 30s)
-  for _ in {1..15}; do
-    if [[ -f /var/lib/grafana/grafana.db ]] && curl -fsSL "http://127.0.0.1:${GRAFANA_PORT}/api/health" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 2
-  done
-
-  # Ejecutar pasando explícitamente cfg:default.paths.data=/var/lib/grafana igual que el unit de systemd
-  local_homepath="/usr/share/grafana"
-  local_cfg="/etc/grafana/grafana.ini"
-  local_data="/var/lib/grafana"
-  local_logs="/var/log/grafana"
-  local_plugins="/var/lib/grafana/plugins"
-
-  if command -v grafana >/dev/null 2>&1; then
-    if runuser -u grafana -- grafana cli \
-      --homepath "$local_homepath" \
-      --config "$local_cfg" \
-      --configOverrides="cfg:default.paths.data=$local_data cfg:default.paths.logs=$local_logs cfg:default.paths.plugins=$local_plugins" \
-      admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
-      GRAFANA_PASS_SET=1
-    fi
-  fi
-
-  if [[ "$GRAFANA_PASS_SET" -eq 0 ]] && command -v grafana-cli >/dev/null 2>&1; then
-    if runuser -u grafana -- grafana-cli \
-      --homepath "$local_homepath" \
-      --config "$local_cfg" \
-      --configOverrides="cfg:default.paths.data=$local_data cfg:default.paths.logs=$local_logs cfg:default.paths.plugins=$local_plugins" \
-      admin reset-admin-password "$GRAFANA_ADMIN_PASS" >/dev/null 2>&1; then
-      GRAFANA_PASS_SET=1
-    fi
-  fi
-
-  # Asegurar permisos correctos en /var/lib/grafana y reiniciar para limpiar lockouts en memoria
-  chown -R grafana:grafana /var/lib/grafana 2>/dev/null || true
-  systemctl restart grafana-server || true
-fi
-
-# Imprimir credenciales directamente a la terminal si está disponible
-# para que no se almacenen en $LOG_FILE
-print_credentials() {
-  cat <<BANNER
+  # Imprimir credenciales directamente a la terminal si está disponible
+  print_credentials() {
+    cat <<BANNER
 
 ================================================================================
             CREDENCIALES Y ACCESO DE LA SUITE DE OBSERVABILIDAD                 
@@ -794,15 +1125,15 @@ print_credentials() {
    - Usuario:         admin
 BANNER
 
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "   - Contraseña:      $GRAFANA_ADMIN_PASS"
-  elif [[ "$GRAFANA_PASS_SET" -eq 1 ]]; then
-    echo "   - Contraseña:      $GRAFANA_ADMIN_PASS"
-  else
-    echo "   - Contraseña:      (Asignar con: sudo grafana-cli admin reset-admin-password '<PASS>')"
-  fi
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "   - Contraseña:      $GRAFANA_ADMIN_PASS"
+    elif [[ "$GRAFANA_PASS_SET" -eq 1 ]]; then
+      echo "   - Contraseña:      $GRAFANA_ADMIN_PASS"
+    else
+      echo "   - Contraseña:      (Asignar con: sudo grafana-cli admin reset-admin-password '<PASS>')"
+    fi
 
-  cat <<BANNER
+    cat <<BANNER
 
  [2] Conexión Segura Recomendada (Túnel SSH desde tu máquina local):
    ssh -L $GRAFANA_PORT:127.0.0.1:$GRAFANA_PORT usuario@IP_DEL_SERVIDOR
@@ -813,22 +1144,61 @@ BANNER
  ni en el registro de log ($LOG_FILE).
 ================================================================================
 BANNER
-}
+  }
 
-if [[ -w /dev/tty ]]; then
-  print_credentials > /dev/tty
-else
-  print_credentials
+  if [[ -w /dev/tty ]]; then
+    print_credentials > /dev/tty
+  else
+    print_credentials
+  fi
 fi
 echo
-echo "INSTALACIÓN BASE COMPLETADA."
-echo "Panel Grafana: http://127.0.0.1:$GRAFANA_PORT (acceso por túnel SSH)"
-echo "Backup previo: $BACKUP_DIR"
-echo "Log auditoría: $LOG_FILE"
-echo
-echo "IMPORTANTE:"
-echo "1) Este script NO habilita UFW ni modifica reglas SSH para evitar bloquear el acceso remoto."
-echo "2) Las 16 alertas (PromQL + LogQL) quedaron aprovisionadas en Grafana (/etc/grafana/provisioning/alerting/observability-alerts.yml) y Prometheus (/etc/prometheus/rules/host-alerts.yml)."
-echo "3) Para configurar notificaciones (Discord/Slack/Telegram) o ajustar umbrales: sudo ./setup_alerts.sh --help"
-echo "4) El formato JSON de Nginx está en nginx/observability-log-format.conf; requiere activación manual por vhost."
-echo "5) Comprueba métricas reales y servicios antes de considerar la protección operativa."
+if [[ "$ROLE" == "satellite" ]]; then
+  cat <<SATELLITE_DONE
+
+================================================================================
+          INSTALACION DE NODO SATELITE COMPLETADA EXITOSAMENTE
+================================================================================
+  - Rol:               Satelite (${SATELLITE_NAME})
+  - IP WireGuard:      ${SATELLITE_IP}/24
+  - Master Remoto:     ${MASTER_ENDPOINT} (Tunel cifrado activo)
+  - Telemetria:        Grafana Alloy enviando metricas y logs a 10.10.0.1
+  - Seguridad Activa:  CrowdSec y Bouncer nftables protegiendo host local
+  - Backup previo:     $BACKUP_DIR
+  - Log auditoria:     $LOG_FILE
+================================================================================
+  Para verificar la conectividad y estado: sudo ./doctor.sh
+================================================================================
+SATELLITE_DONE
+else
+  cat <<MASTER_DONE
+
+================================================================================
+INSTALACION $([[ "$ROLE" == "master" ]] && echo "MASTER" || echo "STANDALONE") COMPLETADA.
+================================================================================
+Panel Grafana: http://127.0.0.1:$GRAFANA_PORT (acceso por tunel SSH)
+Backup previo: $BACKUP_DIR
+Log auditoria: $LOG_FILE
+MASTER_DONE
+
+  if [[ "$ROLE" == "master" ]]; then
+    cat <<WG_INFO
+
+ [3] Red Distribuida WireGuard:
+   - IP Privada Master: 10.10.0.1/24
+   - Puerto UDP:        $WG_PORT
+   - Para registrar satelites: sudo ./add_satellite.sh <NOMBRE_SATELITE>
+WG_INFO
+  fi
+
+  cat <<IMPORTANT_NOTE
+
+IMPORTANTE:"
+1) Este script NO modifica reglas SSH para evitar bloquear el acceso remoto.
+2) Las 16 alertas (PromQL + LogQL) quedaron aprovisionadas en Grafana y Prometheus.
+3) Para configurar notificaciones (Discord/Slack/Telegram) o umbrales: sudo ./setup_alerts.sh --help
+4) Para registrar un nuevo satelite: sudo ./add_satellite.sh <NOMBRE>
+5) Para comprobar estado integral: sudo ./doctor.sh
+================================================================================
+IMPORTANT_NOTE
+fi

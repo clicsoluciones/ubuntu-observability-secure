@@ -48,6 +48,47 @@ flowchart TD
     C2 -->|Datasource: Loki| D
 ```
 
+### Arquitectura Distribuida Multi-Host (Master y Satélites con WireGuard)
+
+Cuando tus servicios están separados físicamente (por ejemplo: Frontend y Backend en distintos servidores o proveedores cloud):
+
+```mermaid
+flowchart LR
+    subgraph Sat1 ["Satélite 1 (Frontend - 10.10.0.2)"]
+        S1_CS["CrowdSec + Bouncer nftables<br>(Protección y bloqueo local)"]
+        S1_AL["Grafana Alloy<br>(Colector liviano)"]
+    end
+
+    subgraph Sat2 ["Satélite 2 (Backend - 10.10.0.3)"]
+        S2_CS["CrowdSec + Bouncer nftables<br>(Protección y bloqueo local)"]
+        S2_AL["Grafana Alloy<br>(Colector liviano)"]
+    end
+
+    subgraph MasterNode ["Servidor Máster (Central - 10.10.0.1)"]
+        WG["WireGuard wg0 (UDP :51820)<br>Túnel Privado Cifrado"]
+        PROM["Prometheus TSDB (:9090)"]
+        LOKI["Grafana Loki (:3100)"]
+        CS_LAPI["CrowdSec Central LAPI (:8080)"]
+        GRAF["Grafana Multi-Host Dashboard (:3000)<br>Selector de Servidores $host"]
+    end
+
+    S1_AL -->|Túnel cifrado wg0| PROM
+    S1_AL -->|Túnel cifrado wg0| LOKI
+    S1_CS -.->|Alertas y decisiones| CS_LAPI
+
+    S2_AL -->|Túnel cifrado wg0| PROM
+    S2_AL -->|Túnel cifrado wg0| LOKI
+    S2_CS -.->|Alertas y decisiones| CS_LAPI
+
+    PROM --> GRAF
+    LOKI --> GRAF
+    CS_LAPI --> GRAF
+```
+
+* **Seguridad Activa Local en Satélites:** Cada satélite cuenta con su propio CrowdSec y bouncer `nftables`, bloqueando ataques en su propio firewall sin latencia de red.
+* **Cero Servicios Pesados en Satélites:** En los satélites **no** se instala Grafana, Prometheus ni Loki; solo corre Alloy y CrowdSec (consumiendo apenas ~80MB RAM).
+* **Defensa Coordinada:** Los satélites reportan incidentes al Máster, y el Máster sincroniza decisiones de bloqueo para que una IP maliciosa detectada en el Frontend sea neutralizada antes de alcanzar el Backend.
+
 ---
 
 ## Requisitos y Pre-flight
@@ -76,6 +117,9 @@ sudo ./install.sh [OPCIONES]
 
 | Opción | Descripción |
 | :--- | :--- |
+| `--role <ROL>` | Rol del nodo: `standalone` (por defecto), `master` (control plane central) o `satellite` (nodo edge protegido). |
+| `--satellites <LISTA>` | En modo Master: lista separada por comas de satélites a provisionar inicialmente (ej. `frontend,backend`). |
+| `--add-satellite <NOMBRE>` | En modo Master: registra un nuevo nodo satélite y emite su comando de instalación listo para pegar. |
 | `--port <PUERTO>` | Define el puerto HTTP de escucha para Grafana (por defecto: `3000`). Útil si el 3000 ya está ocupado. |
 | `--dry-run` | Modo simulación: imprime cada comando y archivo a generar sin realizar cambios en el sistema. |
 | `--skip-preflight` | Omite las comprobaciones de RAM, disco libre y conectividad ante entornos restringidos o containers. |
@@ -87,7 +131,51 @@ sudo ./install.sh [OPCIONES]
 
 ---
 
-## Ejemplos de Ejecución
+## Despliegue Multi-Host (Master y Satélites)
+
+### 1. Instalación o Conversión Idempotente a Servidor Máster
+Si estás instalando un nuevo servidor o **si ya tienes una instalación individual previa (*standalone*)**, ejecuta:
+```bash
+chmod +x install.sh
+sudo ./install.sh --role master
+```
+> [!NOTE]
+> **Actualización sin pérdida de datos:** Si el servidor ya tenía Grafana, Prometheus o Loki corriendo, el script detecta la instalación existente, preserva todas tus bases de datos, métricas y usuarios intactos, y únicamente configura el túnel **WireGuard** (`10.10.0.1`), ajusta los puertos de ingesta protegidos y actualiza el Dashboard multi-host.
+
+Opcionalmente, puedes pre-declarar tus satélites conocidos:
+```bash
+sudo ./install.sh --role master --satellites "frontend,backend"
+```
+
+### 2. Registrar un Nuevo Satélite en el Máster
+En cualquier momento puedes registrar un nuevo satélite ejecutando en el Máster:
+```bash
+sudo ./add_satellite.sh frontend
+# O también mediante install.sh:
+sudo ./install.sh --add-satellite frontend
+```
+Este comando te imprimirá en pantalla el comando exacto con claves criptográficas ya generadas para pegar en el satélite.
+
+### 3. Instalación de un Nodo Satélite (Frontend / Backend)
+En el servidor remoto (Frontend o Backend), clona el repositorio y pega el comando generado por el Máster:
+```bash
+sudo ./install.sh --role satellite \
+  --name "frontend" \
+  --master "IP_PUBLICA_DEL_MASTER:51820" \
+  --master-key "CLAVE_PUBLICA_DEL_MASTER" \
+  --satellite-ip "10.10.0.2" \
+  --satellite-key "CLAVE_PRIVADA_DEL_SATELITE" \
+  --crowdsec-password "PASSWORD_GENERADO"
+```
+El satélite:
+1. Establece el túnel WireGuard seguro (`10.10.0.2/24`).
+2. Levanta **Grafana Alloy** enviando logs y métricas directamente a `10.10.0.1:9090` y `10.10.0.1:3100`.
+3. Levanta **CrowdSec y el bouncer nftables** local para cortar ataques de firewall en el satélite.
+4. Omite Grafana, Prometheus y Loki locales para un consumo mínimo de recursos.
+
+---
+
+## Ejemplos de Ejecución Standalone (Servidor Único)
 
 ### 1. Instalación estándar (Detección segura)
 Instala la suite completa con CrowdSec en modo auditoría/detección (sin alterar tablas nftables):
