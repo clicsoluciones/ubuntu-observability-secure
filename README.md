@@ -278,6 +278,37 @@ sudo ./doctor.sh --check-only
 - **Salud de Base de Datos y Permisos**: Propiedad `loki:loki` en chunks y compactor, permisos de reglas y arranque ordenado de servicios.
 - **Ingesta Real de Telemetría**: Comprueba que Alloy esté entregando métricas a Prometheus y flujos de logs `{job="ssh_auth"}` a Loki (reseteando automáticamente el caché de posiciones si quedaron bloqueados).
 
+### 10. Gestión de Listas Blancas en CrowdSec (Países, Regiones e IPs)
+Para evitar falsos positivos o bloqueos accidentales a usuarios, empleados o clientes legítimos, la suite incluye herramientas dedicadas con validación sintáctica y desbloqueo activo inmediato:
+
+#### A. Autorizar un País o Región Completa (`scripts/whitelist_country.sh`)
+Permite autorizar todo el tráfico procedente de uno o más países utilizando su código ISO 3166-1 alpha-2 de 2 letras (ej. `CO` Colombia, `ES` España, `MX` México, `AR` Argentina, `US` Estados Unidos, `CL` Chile, etc.):
+```bash
+# Autorizar todo el tráfico de un país con motivo descriptivo:
+sudo ./scripts/whitelist_country.sh CO "Tráfico nacional legítimo de Colombia"
+sudo ./scripts/whitelist_country.sh ES "Clientes corporativos de España"
+sudo ./scripts/whitelist_country.sh MX "Operaciones en México"
+```
+**Mecanismo de acción:**
+1. Agrega la excepción en los parsers de enriquecimiento GeoIP (`/etc/crowdsec/parsers/s02-enrich/99_custom_country_whitelists.yaml`) mediante `evt.Enriched.IsoCode`.
+2. Agrega la excepción en postoverflows (`/etc/crowdsec/postoverflows/s01-whitelist/99_custom_country_whitelists.yaml`) mediante `evt.Overflow.Alert.Source.Cn`.
+3. **Desbanque automático**: Si alguna IP de ese país fue bloqueada con anterioridad, el script la detecta y elimina la decisión de ban en tiempo real.
+4. Valida la sintaxis con `crowdsec -t` y recarga el servicio sin caídas.
+
+#### B. Autorizar una IP Fija o Rango CIDR (`scripts/whitelist_ip.sh`)
+Permite excluir permanentemente de baneos una IP de oficina, VPN corporativa o segmento de red:
+```bash
+# Autorizar una IP individual:
+sudo ./scripts/whitelist_ip.sh 198.51.100.25 "Oficina Central"
+
+# Autorizar un rango CIDR completo:
+sudo ./scripts/whitelist_ip.sh 10.10.0.0/24 "Red privada WireGuard de satélites"
+```
+**Mecanismo de acción:**
+1. Desbloquea inmediatamente la IP o rango si existe un ban activo.
+2. Inyecta la regla en `/etc/crowdsec/parsers/s02-enrich/99_custom_whitelists.yaml`.
+3. Valida la sintaxis y recarga CrowdSec.
+
 ---
 
 ## Acceso Seguro a los Paneles y Credenciales
@@ -462,6 +493,22 @@ sudo promtool check rules /etc/prometheus/rules/host-alerts.yml
 sudo cscli metrics
 sudo cscli decisions list
 ```
+
+---
+
+## Solución de Problemas Frecuentes
+
+### 1. Dependencias rotas en APT (`apt --fix-broken install`)
+Si el servidor de destino tiene paquetes rotos o dependencias pendientes de instalaciones previas ajenas a la suite (por ejemplo repositorios externos de MongoDB, auditd o paquetes interrumpidos):
+```bash
+# 1. Configurar paquetes a medio desempaquetar:
+sudo dpkg --configure -a
+
+# 2. Reparar dependencias rotas automáticamente:
+sudo apt-get update
+sudo apt --fix-broken install -y
+```
+Una vez limpio el gestor APT de tu servidor, vuelve a lanzar el instalador (`sudo ./install.sh ...`). El script ahora incluye saneamiento automático previo de dpkg/apt y gestión adaptativa de paquetes de auditoría según la versión de Ubuntu.
 
 ---
 

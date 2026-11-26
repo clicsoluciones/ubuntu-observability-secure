@@ -756,17 +756,45 @@ EOF
 }
 
 
+echo "==> Verificando y saneando gestor de paquetes del sistema (apt/dpkg)"
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  dpkg --configure -a 2>/dev/null || true
+  apt-get -f install -y -o DPkg::Lock::Timeout=120 2>/dev/null || true
+fi
+
 echo "==> Instalando dependencias base"
 export DEBIAN_FRONTEND=noninteractive
 apt_cmd update
-BASE_PKGS="ca-certificates curl wget gnupg apt-transport-https auditd audispd-plugins ufw"
+BASE_PKGS="ca-certificates curl wget gnupg apt-transport-https auditd ufw"
 if [[ "$ROLE" == "master" || "$ROLE" == "satellite" ]]; then
   BASE_PKGS="$BASE_PKGS wireguard wireguard-tools"
 fi
 if [[ "$ROLE" != "satellite" ]]; then
   BASE_PKGS="$BASE_PKGS prometheus"
 fi
-apt_cmd install -y $BASE_PKGS
+
+# audispd-plugins fue integrado directamente en auditd a partir de Ubuntu 24.04
+UBUNTU_MAJOR="$(lsb_release -rs 2>/dev/null | cut -d. -f1 || echo "22")"
+if [[ "$UBUNTU_MAJOR" =~ ^[0-9]+$ && "$UBUNTU_MAJOR" -lt 24 ]]; then
+  if apt-cache show audispd-plugins >/dev/null 2>&1; then
+    BASE_PKGS="$BASE_PKGS audispd-plugins"
+  fi
+fi
+
+if ! apt_cmd install -y $BASE_PKGS; then
+  echo "==> Advertencia: Falló la instalación inicial de paquetes. Intentando autoreparar dependencias rotas del host..."
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    dpkg --configure -a || true
+    apt-get -f install -y -o DPkg::Lock::Timeout=120 || true
+  fi
+  echo "==> Reintentando instalación de dependencias base..."
+  if ! apt_cmd install -y $BASE_PKGS; then
+    echo "ERROR: Existen paquetes rotos o conflictivos preexistentes en este servidor (ej: repositorios de terceros o dependencias no resueltas)." >&2
+    echo "       Ejecuta manualmente para reparar el gestor de paquetes de tu servidor:" >&2
+    echo "       sudo dpkg --configure -a && sudo apt --fix-broken install -y" >&2
+    exit 1
+  fi
+fi
 
 # Configuracion WireGuard segun rol
 if [[ "$ROLE" == "master" ]]; then
