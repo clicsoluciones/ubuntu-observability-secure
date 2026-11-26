@@ -158,7 +158,12 @@ echo
 # ------------------------------------------------------------------------------
 echo -e "${C_BOLD}[1/5] Verificando usuarios del sistema, grupos y aislamiento systemd...${C_RESET}"
 
-for sys_user in prometheus loki alloy grafana; do
+sys_users=("alloy")
+if [[ "$NODE_ROLE" != "satellite" ]]; then
+  sys_users=("prometheus" "loki" "alloy" "grafana")
+fi
+
+for sys_user in "${sys_users[@]}"; do
   if getent passwd "$sys_user" >/dev/null 2>&1; then
     report_pass "Usuario de sistema '$sys_user' existe"
   else
@@ -226,95 +231,110 @@ fi
 # 2. PERMISOS DE DIRECTORIOS, CONFIGURACIONES Y ARCHIVOS DE LOG
 # ------------------------------------------------------------------------------
 echo
-echo -e "${C_BOLD}[2/5] Verificando permisos de almacenamiento (Loki/Prometheus/Grafana) y lectura de logs...${C_RESET}"
+echo -e "${C_BOLD}[2/5] Verificando permisos de almacenamiento y lectura de logs...${C_RESET}"
 
-# Loki storage permissions (causa raíz #1 de fallo status=1/FAILURE en loki.service)
-loki_dirs=(/var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor)
-loki_perm_issue=0
-for d in "${loki_dirs[@]}"; do
-  if [[ ! -d "$d" ]]; then
-    loki_perm_issue=1
+if [[ "$NODE_ROLE" != "satellite" ]]; then
+  # Loki storage permissions (causa raíz #1 de fallo status=1/FAILURE en loki.service)
+  loki_dirs=(/var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor)
+  loki_perm_issue=0
+  for d in "${loki_dirs[@]}"; do
+    if [[ ! -d "$d" ]]; then
+      loki_perm_issue=1
+    fi
+  done
+  if [[ -d /var/lib/loki ]]; then
+    bad_loki_files="$(find /var/lib/loki \( ! -user loki -o ! -group loki \) -print -quit 2>/dev/null || true)"
+    if [[ -n "$bad_loki_files" ]]; then
+      loki_perm_issue=1
+    fi
   fi
-done
-if [[ -d /var/lib/loki ]]; then
-  bad_loki_files="$(find /var/lib/loki \( ! -user loki -o ! -group loki \) -print -quit 2>/dev/null || true)"
-  if [[ -n "$bad_loki_files" ]]; then
-    loki_perm_issue=1
-  fi
-fi
 
-# Verificar y asegurar Prometheus moderno (>= 2.33) con soporte para remote write receiver
-if command -v prometheus >/dev/null 2>&1; then
-  if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
-    if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "El binario de Prometheus es demasiado antiguo (<2.33) y no soporta remote write receiver"
-    else
-      report_fixed "Actualizando Prometheus a v2.55.1 oficial para compatibilidad con remote write receiver..."
-      PROM_VER="2.55.1"
-      ARCH="amd64"
-      if [[ "$(uname -m)" =~ (aarch64|arm64) ]]; then
-        ARCH="arm64"
+  # Verificar y asegurar Prometheus moderno (>= 2.33) con soporte para remote write receiver
+  if command -v prometheus >/dev/null 2>&1; then
+    if ! prometheus --help 2>&1 | grep -q 'web.enable-remote-write-receiver'; then
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "El binario de Prometheus es demasiado antiguo (<2.33) y no soporta remote write receiver"
+      else
+        report_fixed "Actualizando Prometheus a v2.55.1 oficial para compatibilidad con remote write receiver..."
+        PROM_VER="2.55.1"
+        ARCH="amd64"
+        if [[ "$(uname -m)" =~ (aarch64|arm64) ]]; then
+          ARCH="arm64"
+        fi
+        TMP_PROM="/tmp/prometheus-${PROM_VER}.linux-${ARCH}"
+        curl -fsSL --connect-timeout 10 --max-time 60 "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-${ARCH}.tar.gz" | tar -xz -C /tmp
+        if [[ -f "${TMP_PROM}/prometheus" ]]; then
+          install -m 0755 "${TMP_PROM}/prometheus" /usr/bin/prometheus
+          install -m 0755 "${TMP_PROM}/promtool" /usr/bin/promtool
+          rm -rf "${TMP_PROM}"
+          NEED_PROM_RESTART=1
+        fi
       fi
-      TMP_PROM="/tmp/prometheus-${PROM_VER}.linux-${ARCH}"
-      curl -fsSL --connect-timeout 10 --max-time 60 "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-${ARCH}.tar.gz" | tar -xz -C /tmp
-      if [[ -f "${TMP_PROM}/prometheus" ]]; then
-        install -m 0755 "${TMP_PROM}/prometheus" /usr/bin/prometheus
-        install -m 0755 "${TMP_PROM}/promtool" /usr/bin/promtool
-        rm -rf "${TMP_PROM}"
+    fi
+  fi
+
+  if [[ -f /etc/default/prometheus ]] && grep -q 'enable-feature=remote-write-receiver' /etc/default/prometheus; then
+    if [[ "$CHECK_ONLY" -eq 0 ]]; then
+      sed -i 's/--enable-feature=remote-write-receiver/--web.enable-remote-write-receiver/g' /etc/default/prometheus
+      NEED_PROM_RESTART=1
+    fi
+  fi
+
+  # En el Master, asegurar que Prometheus escuche en 0.0.0.0:9090 para ingesta de satélites
+  if [[ "$NODE_ROLE" == "master" && -f /etc/default/prometheus ]]; then
+    if grep -q 'web.listen-address=127.0.0.1:9090' /etc/default/prometheus; then
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "Prometheus está configurado solo en loopback (127.0.0.1:9090). En rol Master debe escuchar en 0.0.0.0:9090 para recibir telemetría"
+      else
+        sed -i 's/--web.listen-address=127.0.0.1:9090/--web.listen-address=0.0.0.0:9090/g' /etc/default/prometheus
         NEED_PROM_RESTART=1
+        report_fixed "Actualizado /etc/default/prometheus a 0.0.0.0:9090 para recibir telemetría de satélites por WireGuard"
       fi
     fi
   fi
-fi
 
-if [[ -f /etc/default/prometheus ]] && grep -q 'enable-feature=remote-write-receiver' /etc/default/prometheus; then
-  if [[ "$CHECK_ONLY" -eq 0 ]]; then
-    sed -i 's/--enable-feature=remote-write-receiver/--web.enable-remote-write-receiver/g' /etc/default/prometheus
-    NEED_PROM_RESTART=1
-  fi
-fi
-
-# Sincronizar /etc/loki/config.yml con el repositorio si falta o si no tiene instance_addr configurado
-if [[ -f "$SCRIPT_DIR/loki/config.yml" ]]; then
-  if [[ ! -f /etc/loki/config.yml ]] || ! grep -q 'instance_addr' /etc/loki/config.yml 2>/dev/null; then
-    if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "/etc/loki/config.yml no existe o le falta 'instance_addr: 127.0.0.1' (provoca error 500 al recibir logs)"
-    else
-      install -d -m 0755 /etc/loki
-      install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
-      chown loki:loki /etc/loki/config.yml
-      NEED_LOKI_RESTART=1
-      report_fixed "Actualizado /etc/loki/config.yml con 'instance_addr: 127.0.0.1' para gRPC interno en loopback"
+  # Sincronizar /etc/loki/config.yml con el repositorio si falta o si no tiene instance_addr configurado
+  if [[ -f "$SCRIPT_DIR/loki/config.yml" ]]; then
+    if [[ ! -f /etc/loki/config.yml ]] || ! grep -q 'instance_addr' /etc/loki/config.yml 2>/dev/null; then
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "/etc/loki/config.yml no existe o le falta 'instance_addr: 127.0.0.1' (provoca error 500 al recibir logs)"
+      else
+        install -d -m 0755 /etc/loki
+        install -m 0644 "$SCRIPT_DIR/loki/config.yml" /etc/loki/config.yml
+        chown loki:loki /etc/loki/config.yml
+        NEED_LOKI_RESTART=1
+        report_fixed "Actualizado /etc/loki/config.yml con 'instance_addr: 127.0.0.1' para gRPC interno en loopback"
+      fi
     fi
   fi
-fi
 
-if [[ "$loki_perm_issue" -eq 0 ]]; then
-  report_pass "Directorios en /var/lib/loki existen y pertenecen íntegramente a loki:loki"
-else
-  if [[ "$CHECK_ONLY" -eq 1 ]]; then
-    report_fail "Directorios faltantes o archivos con propietario incorrecto (root) dentro de /var/lib/loki"
-  else
-    install -d -o loki -g loki -m 0750 /var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor
-    chown -R loki:loki /var/lib/loki
-    chmod 0750 /var/lib/loki
-    NEED_LOKI_RESTART=1
-    report_fixed "Reparada estructura y propiedad recursiva loki:loki en /var/lib/loki"
-  fi
-fi
-
-if [[ -f /etc/loki/config.yml ]]; then
-  if runuser -u loki -- test -r /etc/loki/config.yml 2>/dev/null; then
-    report_pass "Configuración /etc/loki/config.yml legible por usuario 'loki'"
+  if [[ "$loki_perm_issue" -eq 0 ]]; then
+    report_pass "Directorios en /var/lib/loki existen y pertenecen íntegramente a loki:loki"
   else
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "El usuario 'loki' NO puede leer /etc/loki/config.yml (su grupo primario suele ser nogroup)"
+      report_fail "Directorios faltantes o archivos con propietario incorrecto (root) dentro de /var/lib/loki"
     else
-      chmod 0755 /etc/loki 2>/dev/null || true
-      chown loki:loki /etc/loki/config.yml
-      chmod 0644 /etc/loki/config.yml
+      install -d -o loki -g loki -m 0750 /var/lib/loki /var/lib/loki/chunks /var/lib/loki/rules /var/lib/loki/compactor
+      chown -R loki:loki /var/lib/loki
+      chmod 0750 /var/lib/loki
       NEED_LOKI_RESTART=1
-      report_fixed "Ajustado propietario de /etc/loki/config.yml a loki:loki (0644) para lectura directa por el proceso"
+      report_fixed "Reparada estructura y propiedad recursiva loki:loki en /var/lib/loki"
+    fi
+  fi
+
+  if [[ -f /etc/loki/config.yml ]]; then
+    if runuser -u loki -- test -r /etc/loki/config.yml 2>/dev/null; then
+      report_pass "Configuración /etc/loki/config.yml legible por usuario 'loki'"
+    else
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "El usuario 'loki' NO puede leer /etc/loki/config.yml (su grupo primario suele ser nogroup)"
+      else
+        chmod 0755 /etc/loki 2>/dev/null || true
+        chown loki:loki /etc/loki/config.yml
+        chmod 0644 /etc/loki/config.yml
+        NEED_LOKI_RESTART=1
+        report_fixed "Ajustado propietario de /etc/loki/config.yml a loki:loki (0644) para lectura directa por el proceso"
+      fi
     fi
   fi
 fi
@@ -508,75 +528,77 @@ if [[ -f /var/log/crowdsec.log ]]; then
   fi
 fi
 
-# Verificar permisos de /var/lib/grafana, dashboard y alertas aprovisionadas
-# Sincronizar catálogo de 16 reglas de Grafana Alerting si fue actualizado en el repositorio
-if [[ -f "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" ]]; then
-  install -d -m 0755 /etc/grafana/provisioning/alerting
-  if [[ ! -f /etc/grafana/provisioning/alerting/observability-alerts.yml ]] || \
-     ! cmp -s "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" /etc/grafana/provisioning/alerting/observability-alerts.yml; then
-    if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_warn "Las reglas de Grafana Alerting difieren del catálogo del repositorio"
+if [[ "$NODE_ROLE" != "satellite" ]]; then
+  # Verificar permisos de /var/lib/grafana, dashboard y alertas aprovisionadas
+  # Sincronizar catálogo de 16 reglas de Grafana Alerting si fue actualizado en el repositorio
+  if [[ -f "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" ]]; then
+    install -d -m 0755 /etc/grafana/provisioning/alerting
+    if [[ ! -f /etc/grafana/provisioning/alerting/observability-alerts.yml ]] || \
+       ! cmp -s "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" /etc/grafana/provisioning/alerting/observability-alerts.yml; then
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_warn "Las reglas de Grafana Alerting difieren del catálogo del repositorio"
+      else
+        install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
+          /etc/grafana/provisioning/alerting/observability-alerts.yml
+        chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
+        NEED_GRAFANA_RESTART=1
+        report_fixed "Actualizado catálogo de 16 alertas en /etc/grafana/provisioning/alerting/observability-alerts.yml (filtra squashfs y snap)"
+      fi
     else
-      install -m 0640 "$SCRIPT_DIR/grafana/provisioning/alerting/alerts.yml" \
-        /etc/grafana/provisioning/alerting/observability-alerts.yml
-      chown root:grafana /etc/grafana/provisioning/alerting/observability-alerts.yml
-      NEED_GRAFANA_RESTART=1
-      report_fixed "Actualizado catálogo de 16 alertas en /etc/grafana/provisioning/alerting/observability-alerts.yml (filtra squashfs y snap)"
-    fi
-  else
-    report_pass "Catálogo de 16 reglas de Grafana Alerting aprovisionado y actualizado"
-  fi
-fi
-
-# Sincronizar reglas de alerta de Prometheus del host
-if [[ -f "$SCRIPT_DIR/rules/host-alerts.yml" && -d /etc/prometheus/rules ]]; then
-  if [[ ! -f /etc/prometheus/rules/host-alerts.yml ]] || \
-     ! cmp -s "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml; then
-    if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_warn "Las reglas de Prometheus (/etc/prometheus/rules/host-alerts.yml) difieren del repositorio"
-    else
-      install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml
-      systemctl reload prometheus 2>/dev/null || true
-      report_fixed "Actualizado /etc/prometheus/rules/host-alerts.yml y recargado Prometheus"
-    fi
-  else
-    report_pass "Reglas de Prometheus host-alerts.yml actualizadas"
-  fi
-fi
-
-if [[ -f /etc/grafana/provisioning/alerting/telegram.yml ]]; then
-  report_pass "Canal de notificaciones a Telegram aprovisionado y activo en Grafana (/etc/grafana/provisioning/alerting/telegram.yml)"
-fi
-
-# Sincronizar el dashboard JSON (incluyendo panel de contenedores Docker)
-if [[ -f "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" ]]; then
-  if [[ -f /var/lib/grafana/dashboards/ubuntu-security-overview.json ]] && \
-     grep -q 'docker_containers' /var/lib/grafana/dashboards/ubuntu-security-overview.json 2>/dev/null; then
-    report_pass "Dashboard principal de Grafana actualizado (incluye panel de Logs de Aplicaciones Docker)"
-  else
-    if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "El dashboard en /var/lib/grafana/dashboards/ubuntu-security-overview.json no existe o no incluye el panel de logs Docker"
-    else
-      install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
-      install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
-        /var/lib/grafana/dashboards/ubuntu-security-overview.json
-      NEED_GRAFANA_RESTART=1
-      report_fixed "Actualizado /var/lib/grafana/dashboards/ubuntu-security-overview.json con panel de Logs de Aplicaciones Docker"
+      report_pass "Catálogo de 16 reglas de Grafana Alerting aprovisionado y actualizado"
     fi
   fi
-fi
 
-if [[ -d /var/lib/grafana ]]; then
-  bad_graf_files="$(find /var/lib/grafana \( ! -user grafana -o ! -group grafana \) -print -quit 2>/dev/null || true)"
-  if [[ -z "$bad_graf_files" ]]; then
-    report_pass "Directorio /var/lib/grafana pertenece íntegramente a grafana:grafana"
-  else
-    if [[ "$CHECK_ONLY" -eq 1 ]]; then
-      report_fail "Archivos en /var/lib/grafana con propietario distinto de grafana:grafana"
+  # Sincronizar reglas de alerta de Prometheus del host
+  if [[ -f "$SCRIPT_DIR/rules/host-alerts.yml" && -d /etc/prometheus/rules ]]; then
+    if [[ ! -f /etc/prometheus/rules/host-alerts.yml ]] || \
+       ! cmp -s "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml; then
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_warn "Las reglas de Prometheus (/etc/prometheus/rules/host-alerts.yml) difieren del repositorio"
+      else
+        install -m 0644 "$SCRIPT_DIR/rules/host-alerts.yml" /etc/prometheus/rules/host-alerts.yml
+        systemctl reload prometheus 2>/dev/null || true
+        report_fixed "Actualizado /etc/prometheus/rules/host-alerts.yml y recargado Prometheus"
+      fi
     else
-      chown -R grafana:grafana /var/lib/grafana
-      NEED_GRAFANA_RESTART=1
-      report_fixed "Corregido propietario recursivo grafana:grafana en /var/lib/grafana"
+      report_pass "Reglas de Prometheus host-alerts.yml actualizadas"
+    fi
+  fi
+
+  if [[ -f /etc/grafana/provisioning/alerting/telegram.yml ]]; then
+    report_pass "Canal de notificaciones a Telegram aprovisionado y activo en Grafana (/etc/grafana/provisioning/alerting/telegram.yml)"
+  fi
+
+  # Sincronizar el dashboard JSON (incluyendo panel de contenedores Docker)
+  if [[ -f "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" ]]; then
+    if [[ -f /var/lib/grafana/dashboards/ubuntu-security-overview.json ]] && \
+       grep -q 'docker_containers' /var/lib/grafana/dashboards/ubuntu-security-overview.json 2>/dev/null; then
+      report_pass "Dashboard principal de Grafana actualizado (incluye panel de Logs de Aplicaciones Docker)"
+    else
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "El dashboard en /var/lib/grafana/dashboards/ubuntu-security-overview.json no existe o no incluye el panel de logs Docker"
+      else
+        install -d -o grafana -g grafana -m 0755 /var/lib/grafana/dashboards
+        install -o grafana -g grafana -m 0644 "$SCRIPT_DIR/grafana/dashboards/ubuntu-security-overview.json" \
+          /var/lib/grafana/dashboards/ubuntu-security-overview.json
+        NEED_GRAFANA_RESTART=1
+        report_fixed "Actualizado /var/lib/grafana/dashboards/ubuntu-security-overview.json con panel de Logs de Aplicaciones Docker"
+      fi
+    fi
+  fi
+
+  if [[ -d /var/lib/grafana ]]; then
+    bad_graf_files="$(find /var/lib/grafana \( ! -user grafana -o ! -group grafana \) -print -quit 2>/dev/null || true)"
+    if [[ -z "$bad_graf_files" ]]; then
+      report_pass "Directorio /var/lib/grafana pertenece íntegramente a grafana:grafana"
+    else
+      if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        report_fail "Archivos en /var/lib/grafana con propietario distinto de grafana:grafana"
+      else
+        chown -R grafana:grafana /var/lib/grafana
+        NEED_GRAFANA_RESTART=1
+        report_fixed "Corregido propietario recursivo grafana:grafana en /var/lib/grafana"
+      fi
     fi
   fi
 fi
@@ -593,13 +615,15 @@ fi
 
 # Reinicios preventivos ordenados si se repararon permisos
 if [[ "$CHECK_ONLY" -eq 0 ]]; then
-  if [[ "$NEED_PROM_RESTART" -eq 1 ]]; then
-    systemctl reset-failed prometheus 2>/dev/null || true
-    systemctl restart prometheus || true
-  fi
-  if [[ "$NEED_LOKI_RESTART" -eq 1 ]]; then
-    systemctl reset-failed "$LOKI_SERVICE" 2>/dev/null || true
-    systemctl restart "$LOKI_SERVICE" || true
+  if [[ "$NODE_ROLE" != "satellite" ]]; then
+    if [[ "$NEED_PROM_RESTART" -eq 1 ]]; then
+      systemctl reset-failed prometheus 2>/dev/null || true
+      systemctl restart prometheus || true
+    fi
+    if [[ "$NEED_LOKI_RESTART" -eq 1 ]]; then
+      systemctl reset-failed "$LOKI_SERVICE" 2>/dev/null || true
+      systemctl restart "$LOKI_SERVICE" || true
+    fi
   fi
 fi
 
